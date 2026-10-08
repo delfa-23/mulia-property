@@ -1,0 +1,14 @@
+<x-layouts::app :title="__('Customer Marketing')">
+    <div class="space-y-6"><div class="flex items-center justify-between"><div><h1 class="text-2xl font-semibold">Customer</h1><p class="mt-1 text-sm text-zinc-500">Kelola data customer marketing.</p></div><a href="{{ route('marketing.customers.create') }}" class="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white" wire:navigate>Tambah Customer</a></div>@if(session('success'))<div class="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{{ session('success') }}</div>@endif @if(session('error'))<div class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{{ session('error') }}</div>@endif
+    <form method="GET" class="flex flex-col gap-2 sm:flex-row">
+        <select name="customer_id" class="w-full rounded-lg border border-zinc-300 px-3 py-2 sm:max-w-md">
+            <option value="">Semua customer</option>
+            @foreach($customerOptions as $customerOption)
+                <option value="{{ $customerOption->id }}" @selected(request('customer_id') == $customerOption->id)>{{ $customerOption->name }}</option>
+            @endforeach
+        </select>
+        <input name="search" value="{{ request('search') }}" placeholder="Cari nama, NIK, telepon, email" class="w-full rounded-lg border border-zinc-300 px-3 py-2 sm:max-w-md">
+        <button class="rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white">Cari</button>
+    </form>
+    <div class="overflow-hidden rounded-xl border border-zinc-200 bg-white"><div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-zinc-50"><tr><th class="px-6 py-3">Nama</th><th class="px-6 py-3">NIK</th><th class="px-6 py-3">Kontak</th><th class="px-6 py-3">Booking</th><th class="px-6 py-3 text-right">Aksi</th></tr></thead><tbody class="divide-y divide-zinc-200">@forelse($customers as $customer)<tr><td class="px-6 py-4 font-medium">{{ $customer->name }}</td><td class="px-6 py-4">{{ $customer->nik ?? '-' }}</td><td class="px-6 py-4">{{ $customer->phone ?? $customer->email ?? '-' }}</td><td class="px-6 py-4">{{ $customer->bookings_count }}</td><td class="px-6 py-4 text-right"><a href="{{ route('marketing.customers.show', $customer) }}" class="mr-3 text-zinc-700" wire:navigate>Detail</a><a href="{{ route('marketing.customers.edit', $customer) }}" class="text-blue-600" wire:navigate>Edit</a><form class="ml-3 inline" method="POST" action="{{ route('marketing.customers.destroy', $customer) }}" onsubmit="return confirm('Hapus customer ini?')">@csrf @method('DELETE')<button class="text-red-600">Hapus</button></form></td></tr>@empty<tr><td colspan="5" class="px-6 py-10 text-center text-zinc-500">Belum ada customer.</td></tr>@endforelse</tbody></table></div><div class="px-6 py-4">{{ $customers->links() }}</div></div></div>
+</x-layouts::app>

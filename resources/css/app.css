@@ -1,0 +1,251 @@
+@import 'tailwindcss';
+@import '../../vendor/livewire/flux/dist/flux.css';
+
+@source '../views';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
+@source '../../vendor/livewire/flux/stubs/**/*.blade.php';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --radius-lg: 6px;
+    --radius-xl: 8px;
+    --radius-2xl: 8px;
+
+    --color-blue-50: #fff4ef;
+    --color-blue-100: #ffe3d7;
+    --color-blue-500: #eb5120;
+    --color-blue-600: #eb5120;
+    --color-blue-700: #d44215;
+
+    --color-accent: #eb5120;
+    --color-accent-content: #eb5120;
+    --color-accent-foreground: #ffffff;
+}
+
+@layer theme {
+    .dark {
+        --color-accent: #eb5120;
+        --color-accent-content: #eb5120;
+        --color-accent-foreground: #ffffff;
+    }
+}
+
+@layer base {
+    html {
+        color-scheme: light;
+    }
+
+    [data-flux-sidebar-toggle] {
+        position: relative !important;
+        z-index: 60 !important;
+        pointer-events: auto !important;
+        cursor: pointer !important;
+    }
+
+    [data-flux-sidebar-backdrop] {
+        z-index: 40;
+    }
+
+    [data-flux-sidebar] {
+        position: relative;
+        z-index: 30;
+    }
+
+    body,
+    .dark body {
+        min-height: 100vh;
+        color: #1e293b;
+        background: #f7f9fc;
+    }
+
+    input,
+    textarea,
+    select {
+        color: #1e293b;
+        background-color: #ffffff;
+        border-color: #cbd5e1;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+        border-color: #eb5120;
+        --tw-ring-color: #eb5120;
+    }
+
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-gray-200, currentColor);
+    }
+}
+
+.auth-shell :is(input, textarea, select) {
+    border-color: #cbd5e1;
+    background-color: #ffffff;
+    color: #10233d;
+}
+
+.auth-shell dialog[data-modal='password-help'] {
+    border: 1px solid #e2e8f0;
+    background-color: #ffffff !important;
+    color: #10233d;
+}
+
+.auth-shell dialog[data-modal='password-help'] > div {
+    background-color: #ffffff !important;
+    color: #10233d;
+}
+
+.auth-shell dialog[data-modal='password-help'] :is(h1, h2, h3, p, [data-flux-text]) {
+    color: #10233d;
+}
+
+.auth-shell dialog[data-modal='password-help']::backdrop {
+    background: rgb(16 35 61 / 55%);
+}
+
+.app-main {
+    min-height: 100dvh;
+    padding: 1.25rem;
+    color: #1e293b;
+    background: #f7f9fc;
+}
+
+@media (min-width: 768px) {
+    .app-main {
+        padding: 1.75rem 2rem;
+    }
+}
+
+.app-main :is(h1, h2, h3) {
+    color: #10233d;
+}
+
+.app-main :is(.text-gray-900, .text-zinc-900, .text-black) {
+    color: #10233d;
+}
+
+.app-main :is(.text-gray-800, .text-zinc-800) {
+    color: #1e3a5f;
+}
+
+.app-main :is(.text-gray-700, .text-zinc-700) {
+    color: #334155;
+}
+
+.app-main :is(.text-gray-600, .text-zinc-600) {
+    color: #475569;
+}
+
+.app-main :is(.text-gray-500, .text-zinc-500) {
+    color: #64748b;
+}
+
+.app-main :is(.rounded-xl.border, .rounded-2xl.border, .rounded-lg.border) {
+    border-color: #e2e8f0;
+    box-shadow: 0 4px 20px -2px rgb(16 35 61 / 5%), 0 2px 6px -1px rgb(16 35 61 / 3%);
+}
+
+.app-main :is(.bg-gray-50, .bg-zinc-50, .bg-gray-100, .bg-zinc-100) {
+    background-color: #f1f5f9;
+}
+
+.app-main :is(table, thead, th, td) {
+    border-color: #e2e8f0;
+}
+
+.app-main thead {
+    color: #475569;
+    background-color: #f1f5f9;
+}
+
+.app-main th {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.app-main :is(input, textarea, select) {
+    border-color: #cbd5e1;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #1e293b;
+}
+
+.app-main :is(input, textarea, select):focus {
+    border-color: #eb5120;
+    outline-color: #eb5120;
+    --tw-ring-color: #eb5120;
+}
+
+.app-main :is([class~='dark:bg-zinc-900'], [class~='dark:bg-zinc-800'], [class~='dark:bg-gray-900'], [class~='dark:bg-gray-800']) {
+    background-color: #ffffff;
+}
+
+.app-main :is([class~='dark:text-white'], [class~='dark:text-zinc-100'], [class~='dark:text-zinc-200']) {
+    color: #10233d;
+}
+
+.app-sidebar {
+    border-color: rgb(212 66 21 / 40%) !important;
+    background: #eb5120 !important;
+    color: #ffffff;
+}
+
+.app-sidebar :is([data-flux-sidebar-header], [data-flux-sidebar-nav]) {
+    color: #ffffff;
+}
+
+.app-sidebar [data-flux-sidebar-group] > :first-child {
+    color: rgb(255 237 213 / 82%);
+}
+
+.app-sidebar [data-flux-sidebar-item] {
+    border-color: transparent;
+    color: rgb(255 255 255 / 88%);
+}
+
+.app-sidebar [data-flux-sidebar-item]:hover {
+    background-color: #d44215;
+    color: #ffffff;
+}
+
+.app-sidebar [data-flux-sidebar-item][data-current],
+.app-sidebar [data-flux-sidebar-item][data-active] {
+    border-color: #ffffff;
+    background-color: #10233d;
+    color: #ffffff;
+}
+
+.app-sidebar [data-flux-sidebar-item] svg {
+    color: currentColor;
+}
+
+.app-sidebar [data-flux-sidebar-brand] {
+    color: #ffffff;
+}
+
+.app-sidebar :is([data-flux-sidebar-collapse], [data-flux-sidebar-header] button) {
+    color: #ffffff;
+}
+
+[data-flux-field]:not(ui-radio, ui-checkbox) {
+    @apply grid gap-2;
+}
+
+[data-flux-label] {
+    @apply mb-0! leading-tight!;
+}
+
+input:focus[data-flux-control],
+textarea:focus[data-flux-control],
+select:focus[data-flux-control] {
+    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+}

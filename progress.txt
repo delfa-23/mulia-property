@@ -1,0 +1,166 @@
+LAPORAN KEMAJUAN PENGEMBANGAN WEB
+MULIA PROPERTY
+
+Tanggal laporan: 28 September 2026
+Sumber laporan: pemeriksaan struktur source code aplikasi
+Status dokumen: ringkasan implementasi untuk informasi client
+
+1. RINGKASAN EKSEKUTIF
+
+Aplikasi web Mulia Property telah memiliki fondasi operasional untuk mengelola
+data project perumahan dan proses kerja lintas divisi. Modul utama yang telah
+tersedia di source code meliputi administrasi project, pemasaran dan booking,
+progress pembangunan, pemberkasan sampai akad, pemantauan keuangan, alert,
+serta laporan progress per divisi.
+
+Pengguna diarahkan berdasarkan role dan divisi. Data operasional memiliki
+validasi, status proses, dan riwayat perubahan pada alur-alur utama. Admin dapat
+memantau data lintas divisi dan mengunduh laporan progress seluruh divisi dalam
+format Excel (.xlsx).
+
+Catatan ruang lingkup: laporan ini merangkum kemampuan yang teridentifikasi pada
+source code. Laporan ini bukan hasil audit data produksi dan tidak menyatakan
+angka persentase penyelesaian proyek. Jumlah data aktual, penerimaan client,
+kelulusan UAT, dan status deployment perlu dikonfirmasi terpisah.
+
+2. RINCIAN PROGRESS PER DIVISI
+
+A. ADMINISTRASI / ADMIN
+
+Status implementasi: modul administrasi inti tersedia di aplikasi.
+
+- Dashboard admin menampilkan ringkasan project, blok, kavling, booking,
+	pemasukan, pengeluaran, alert aktif, laporan yang menunggu tindak lanjut,
+	progress fisik, progress fasilitas, anggaran, dan deviasi anggaran.
+- Pengelolaan akun pengguna mencakup pembuatan, perubahan, dan penghapusan
+	akun, serta pengaturan role dan penempatan divisi.
+- Master project perumahan dapat dibuat, dicari, diperbarui, dan dihapus.
+- Struktur project mendukung pengelolaan blok dan kavling di bawah project.
+- Admin dapat menetapkan tahapan pembangunan, urutan, rentang persentase, dan
+	status aktif. Validasi mencegah rentang tahapan bertabrakan.
+- Data fasilitas umum dapat dikelola per project, termasuk anggaran dan
+	deskripsi fasilitas.
+- Admin dapat melihat dan menyelesaikan alert yang dikirim oleh pengguna.
+- Activity log tersedia untuk membantu penelusuran aktivitas penting.
+- Admin dapat melihat Progress Report lintas divisi dan mengunduh rekap Excel.
+
+B. DIVISI MARKETING
+
+Status implementasi: alur utama pemasaran, customer, kavling, sales, dan booking
+tersedia di aplikasi.
+
+- Dashboard menampilkan jumlah customer, booking aktif, booking dalam proses,
+	booking akad, booking selesai, serta status ketersediaan kavling.
+- Dashboard juga menyajikan ringkasan kinerja sales, anggaran, pemasukan,
+	pengeluaran, saldo, pengeluaran terbaru, dan pengeluaran berdasarkan kategori.
+- Data customer mendukung tambah, lihat, cari, ubah, dan hapus dengan
+	perlindungan agar customer yang sudah memiliki booking tidak terhapus.
+- Data identitas customer mencakup informasi dasar dan unggah dokumen KTP,
+	KK, NPWP, serta formulir booking.
+- Data sales dapat dikelola oleh admin dan TL Marketing. Sales yang sudah
+	digunakan pada booking tidak dapat dihapus dan dapat dinonaktifkan.
+- Daftar kavling mendukung pencarian dan filter berdasarkan project, blok,
+	nomor kavling, status, dan rentang harga.
+- Booking menghubungkan customer, sales, dan kavling, dengan filter daftar
+	berdasarkan project, blok, kavling, sales, serta status.
+- Status booking mencakup booking, process, akad, finish, dan cancelled.
+- Perubahan booking disimpan dalam riwayat. Status kavling diperbarui mengikuti
+	status booking, dan sistem memvalidasi agar kavling yang tidak tersedia atau
+	sudah memiliki booking aktif tidak dipesan kembali.
+
+C. DIVISI PEMBANGUNAN
+
+Status implementasi: pemantauan progress fisik per kavling dan fasilitas umum
+tersedia di aplikasi.
+
+- Dashboard menampilkan ringkasan project, blok, total kavling, status kavling,
+	rata-rata progress fisik, rata-rata progress fasilitas, serta pembaruan terbaru.
+- Daftar progress kavling dapat difilter berdasarkan project dan blok.
+- Detail kavling menampilkan tahapan pembangunan, progress, catatan, serta
+	informasi project dan booking terkait.
+- Progress diperbarui per tahapan dengan validasi rentang persentase yang
+	ditentukan admin, dari 0 sampai 100 persen sesuai konfigurasi tahap.
+- Riwayat progress menyimpan nilai sebelumnya, nilai baru, pengguna yang
+	memperbarui, waktu, dan catatan.
+- Fasilitas umum menampilkan data per project dan mendukung pencarian serta
+	filter. Tim Pembangunan memperbarui nilai realisasi dan catatan.
+- Realisasi fasilitas tidak boleh melebihi anggaran. Status fasilitas dihitung
+	sebagai planned, in_progress, completed, atau cancelled sesuai nilainya.
+- Riwayat realisasi dan pencatat perubahan disimpan untuk audit.
+- Pengiriman alert tersedia bagi pengguna divisi Pembangunan.
+
+D. DIVISI PEMBERKASAN
+
+Status implementasi: checklist dan pembaruan proses dokumen sampai penjadwalan
+akad tersedia di aplikasi.
+
+- Daftar booking dapat dicari dan difilter berdasarkan project, blok, nomor
+	kavling, status booking, dan nama customer.
+- Detail booking menggabungkan informasi customer, sales, kavling, dan project.
+- Proses dokumen mendukung jumlah dokumen wajib dan selesai, status dokumen,
+	catatan, PIC, serta status BI Checking.
+- Proses bank mencatat nama bank, status, PIC, waktu pengajuan/persetujuan,
+	dan catatan.
+- Data SP3 mendukung nomor, status, tanggal penerbitan, pembuat, dan catatan.
+- Jadwal akad mendukung tanggal, lokasi, status, pembuat, dan catatan.
+- Dokumen customer yang didukung pada alur ini mencakup KTP, KK, NPWP, dan
+	formulir booking dengan pembatasan jenis file.
+- Urutan proses divalidasi. Proses bank mensyaratkan dokumen lengkap dan
+	BI Checking disetujui; status booking dan kavling diperbarui mengikuti
+	kemajuan proses pemberkasan.
+- Pengiriman alert tersedia bagi pengguna divisi Pemberkasan.
+
+3. FITUR LINTAS DIVISI DAN KEUANGAN
+
+- Role yang telah disiapkan: admin, TL Pembangunan, staff Pembangunan,
+	TL Marketing, staff Marketing, TL Pemberkasan, dan staff Pemberkasan.
+- Akses halaman dibatasi menggunakan autentikasi, verifikasi akun, role, dan
+	middleware divisi. Menu yang ditampilkan menyesuaikan role pengguna.
+- Pengguna yang berwenang dapat membuat Progress Report dengan periode,
+	judul, rincian, dan nilai progress.
+- Progress Report dapat disimpan sebagai draft dan dikirim untuk review.
+	TL Pembangunan dapat menyetujui atau meminta revisi beserta catatan.
+- Riwayat review menyimpan tindakan dan reviewer. Admin dapat melihat laporan
+	lintas divisi, dikelompokkan per divisi, termasuk rincian isi laporan.
+- Ekspor Excel menyediakan satu baris per laporan dengan informasi divisi,
+	periode, rincian, progress, status, pembuat, dan riwayat review. Divisi yang
+	belum memiliki laporan tetap tercantum.
+- Modul keuangan yang dapat diakses admin dan pengguna Marketing menyajikan
+	anggaran, pemasukan, dan pengeluaran dengan filter project.
+- Pengeluaran dapat dicatat, diperbarui, dan dihapus. Perubahan jumlah,
+	kategori, tanggal, dan deskripsi dicatat dalam riwayat.
+- Pengeluaran dapat dikaitkan ke project, kavling, atau fasilitas; validasi
+	memastikan kavling/fasilitas memang berada di project yang dipilih.
+
+4. KONTROL DATA DAN ALUR KERJA
+
+- Form utama memiliki validasi input, format, rentang angka, relasi data, dan
+	batasan status.
+- Transaksi booking dan pembaruan proses penting menggunakan transaksi database
+	agar perubahan yang saling terkait tersimpan konsisten.
+- Riwayat disediakan untuk perubahan progress pembangunan, realisasi fasilitas,
+	booking, review laporan, dan pengeluaran sesuai alurnya.
+- Proteksi penghapusan diterapkan pada data yang sudah memiliki relasi penting,
+	seperti customer yang sudah mempunyai booking dan sales yang sudah digunakan.
+
+5. STATUS DAN TAHAP LANJUTAN
+
+- Implementasi modul inti dapat ditelusuri di source code aplikasi.
+- Data master aktual seperti nama project, blok, kavling, harga, budget,
+	customer, akun pengguna, dan PIC perlu diisi atau diverifikasi menggunakan
+	data yang disetujui client.
+- Perlu UAT bersama perwakilan Admin, Marketing, Pembangunan, dan Pemberkasan
+	untuk mengonfirmasi alur, istilah status, kewenangan, dan hasil laporan.
+- Perlu konfirmasi kebijakan dokumen, retensi file, serta prosedur backup dan
+	pemulihan sebelum operasional produksi.
+- Status domain, hosting/deployment, konfigurasi produksi, dan persetujuan
+	go-live tidak dapat dipastikan hanya dari source code yang diperiksa.
+- Pengujian otomatis fitur memerlukan lingkungan database test yang berfungsi;
+	pada lingkungan pemeriksaan saat ini driver SQLite untuk PHP belum tersedia.
+
+KESIMPULAN
+
+Aplikasi telah mencakup alur inti pengelolaan properti dan koordinasi pekerjaan
+antar divisi. Fokus tahap berikutnya adalah validasi proses bersama client,
+pengisian data master yang benar, UAT lintas role, serta konfirmasi kesiapan
+deployment dan operasional produksi.
