@@ -10,8 +10,6 @@
                 <flux:sidebar.collapse class="lg:hidden" />
             </flux:sidebar.header>
 
-            <livewire:team-switcher />
-
             <flux:sidebar.nav>
 
                 {{-- MENU ADMIN --}}
@@ -352,8 +350,6 @@
         </flux:header>
 
         {{ $slot }}
-
-        <livewire:create-team-modal />
 
         @persist('toast')
             <flux:toast.group>
