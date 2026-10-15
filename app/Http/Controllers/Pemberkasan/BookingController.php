@@ -71,24 +71,42 @@ class BookingController extends Controller
     public function uploadDocument(Request $request, Booking $booking): RedirectResponse
     {
         $validated = $request->validate([
-            'document_type' => ['required', 'string', 'max:100'],
+            'document_type' => ['required', Rule::in(PemberkasanDocumentService::BOOKING_DOCUMENT_TYPES)],
+            'document_category' => ['nullable', Rule::in(['standard', 'other'])],
             'document' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
         ]);
+
+        $documentCategory = $validated['document_category'] ?? 'standard';
+        $documentType = $validated['document_type'];
+
+        if ($request->user()->isAssignedToDivision('marketing')) {
+            if (! in_array($documentType, PemberkasanDocumentService::MARKETING_DOCUMENT_TYPES, true)) {
+                throw ValidationException::withMessages([
+                    'document_type' => 'Pilih jenis berkas Marketing yang tersedia.',
+                ]);
+            }
+
+            $expectedCategory = in_array($documentType, PemberkasanDocumentService::BI_CHECKING_DOCUMENT_TYPES, true)
+                ? 'standard'
+                : 'other';
+
+            if ($documentCategory !== $expectedCategory) {
+                throw ValidationException::withMessages([
+                    'document_category' => 'Kategori berkas tidak sesuai dengan tahap dokumen yang dipilih.',
+                ]);
+            }
+        }
 
         try {
             $document = $this->pemberkasanDocumentService->uploadForBooking(
                 $booking,
                 $request->file('document'),
-                $validated['document_type'],
+                $documentType,
                 $request->user(),
+                $documentCategory,
             );
 
-            return back()->with(
-                'success',
-                $document->status === 'uploaded'
-                    ? 'Dokumen '.$document->document_type.' berhasil diupload ke Google Drive.'
-                    : 'Dokumen tersimpan di sistem dan sedang menunggu upload ke Google Drive.',
-            );
+            return back()->with('success', 'Dokumen '.$document->document_type.' berhasil diunggah langsung ke Google Drive.');
         } catch (\Throwable $exception) {
             return back()->withErrors(['document' => $exception->getMessage()])->withInput();
         }
@@ -99,12 +117,7 @@ class BookingController extends Controller
         try {
             $document = $this->pemberkasanDocumentService->retryUpload($pemberkasanDocument, $request->user());
 
-            return back()->with(
-                'success',
-                $document->status === 'uploaded'
-                    ? 'Upload ulang dokumen berhasil.'
-                    : 'Upload ulang dokumen telah ditambahkan ke antrean Google Drive.',
-            );
+            return back()->with('success', 'Upload ulang dokumen berhasil diunggah ke Google Drive.');
         } catch (\Throwable $exception) {
             return back()->withErrors(['document' => $exception->getMessage()]);
         }
@@ -112,16 +125,20 @@ class BookingController extends Controller
 
     public function syncCustomerDocuments(Booking $booking): RedirectResponse
     {
-        $documents = $this->pemberkasanDocumentService->syncCustomerDocuments(
-            $booking->load(['customer', 'lot.block.property']),
-            ['KTP', 'KK', 'NPWP', 'Dokumen Pemesanan'],
-        );
+        try {
+            $documents = $this->pemberkasanDocumentService->syncCustomerDocuments(
+                $booking->load(['customer', 'lot.block.property', 'documentProcess']),
+                ['KTP', 'KK', 'NPWP', 'Dokumen Pemesanan'],
+            );
+        } catch (\Throwable $exception) {
+            return back()->withErrors(['document' => $exception->getMessage()]);
+        }
 
         return back()->with(
             'success',
             $documents === []
                 ? 'Tidak ada dokumen lama yang perlu disinkronkan ke Google Drive.'
-                : count($documents).' dokumen lama ditambahkan ke antrean Google Drive.',
+                : count($documents).' dokumen lama berhasil diunggah langsung ke Google Drive.',
         );
     }
 
@@ -141,6 +158,8 @@ class BookingController extends Controller
             'customer_kk_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
             'customer_npwp_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
             'customer_booking_form_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
+            'document_uploads' => ['nullable', 'array'],
+            'document_uploads.*' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
             'document_total_required' => ['nullable', 'integer', 'min:0'],
             'document_total_completed' => ['nullable', 'integer', 'min:0', 'lte:document_total_required'],
             'document_status' => ['nullable', Rule::in(['incomplete', 'complete', 'revision'])],
@@ -161,34 +180,81 @@ class BookingController extends Controller
             'akad_notes' => ['nullable', 'string'],
         ]);
 
+        $documentUploads = $request->file('document_uploads', []);
+        foreach (array_keys($documentUploads) as $documentType) {
+            if (! in_array($documentType, PemberkasanDocumentService::BI_CHECKING_DOCUMENT_TYPES, true)
+                && ! in_array($documentType, PemberkasanDocumentService::ADDITIONAL_MARKETING_DOCUMENT_TYPES, true)
+                && ! in_array($documentType, PemberkasanDocumentService::PROPERTY_DOCUMENT_TYPES, true)) {
+                throw ValidationException::withMessages([
+                    'document_uploads' => 'Terdapat jenis berkas yang tidak valid.',
+                ]);
+            }
+        }
+
+        if (
+            isset($validated['bi_checking_status']) &&
+            $validated['bi_checking_status'] !== ($booking->documentProcess?->bi_checking_status ?? 'not_checked')
+        ) {
+            abort_unless(
+                $request->user()->isAdmin() ||
+                    in_array($request->user()->role, ['tl_pemberkasan', 'staff_pemberkasan'], true),
+                403,
+            );
+        }
+
+        $biCheckingStatus = $validated['bi_checking_status']
+            ?? $booking->documentProcess?->bi_checking_status
+            ?? 'not_checked';
         $this->ensureProcessOrder($booking, $validated);
 
         $customerDocumentTypes = [];
-
-        DB::transaction(function () use ($request, $booking, $validated, &$customerDocumentTypes): void {
-            foreach ([
-                'customer_ktp_file' => 'KTP',
-                'customer_kk_file' => 'KK',
-                'customer_npwp_file' => 'NPWP',
-                'customer_booking_form_file' => 'Dokumen Pemesanan',
-            ] as $requestField => $documentType) {
-                if (! $request->hasFile($requestField)) {
-                    continue;
-                }
-
-                $existingDocument = PemberkasanDocument::query()
-                    ->where('booking_id', $booking->id)
-                    ->where('document_type', $documentType)
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($existingDocument && in_array($existingDocument->status, ['pending', 'uploading'], true)) {
-                    throw ValidationException::withMessages([
-                        $requestField => 'Dokumen ini masih menunggu atau sedang diproses oleh Google Drive.',
-                    ]);
-                }
+        foreach ([
+            'customer_ktp_file' => 'KTP',
+            'customer_kk_file' => 'KK',
+            'customer_npwp_file' => 'NPWP',
+            'customer_booking_form_file' => 'Dokumen Pemesanan',
+        ] as $requestField => $documentType) {
+            if (! $request->hasFile($requestField)) {
+                continue;
             }
 
+            $documentCategory = in_array(
+                $documentType,
+                PemberkasanDocumentService::LEGACY_BI_CHECKING_DOCUMENT_TYPES,
+                true,
+            ) ? 'standard' : 'other';
+
+            $existingDocument = PemberkasanDocument::query()
+                ->where('booking_id', $booking->id)
+                ->where('document_category', $documentCategory)
+                ->where('document_type', $documentType)
+                ->first();
+
+            if ($existingDocument && in_array($existingDocument->status, ['pending', 'uploading'], true)) {
+                throw ValidationException::withMessages([
+                    $requestField => 'Dokumen ini masih menunggu atau sedang diproses oleh Google Drive.',
+                ]);
+            }
+        }
+
+        foreach ($documentUploads as $documentType => $uploadedFile) {
+            $documentCategory = in_array($documentType, PemberkasanDocumentService::BI_CHECKING_DOCUMENT_TYPES, true)
+                ? 'standard'
+                : 'other';
+            $existingDocument = PemberkasanDocument::query()
+                ->where('booking_id', $booking->id)
+                ->where('document_category', $documentCategory)
+                ->where('document_type', $documentType)
+                ->first();
+
+            if ($existingDocument && in_array($existingDocument->status, ['pending', 'uploading'], true)) {
+                throw ValidationException::withMessages([
+                    'document_uploads.'.$documentType => 'Dokumen ini masih menunggu atau sedang diproses oleh Google Drive.',
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($request, $booking, $validated, &$customerDocumentTypes): void {
             $customer = $booking->customer;
             $customer->update([
                 'name' => $validated['customer_name'] ?? $customer->name,
@@ -220,14 +286,6 @@ class BookingController extends Controller
                     ]);
                     $customerDocumentTypes[] = $documentType;
                 }
-            }
-
-            if ($customerDocumentTypes !== []) {
-                $this->pemberkasanDocumentService->syncCustomerDocuments(
-                    $booking->fresh(['customer', 'lot.block.property']),
-                    $customerDocumentTypes,
-                    replaceExisting: true,
-                );
             }
 
             $document = DocumentProcess::updateOrCreate(
@@ -277,6 +335,38 @@ class BookingController extends Controller
             $booking->update(['status' => $bookingStatus]);
             $booking->lot()->update(['status' => $bookingStatus === 'booking' ? 'booked' : $bookingStatus]);
         });
+
+        if ($customerDocumentTypes !== []) {
+            try {
+                $this->pemberkasanDocumentService->syncCustomerDocuments(
+                    $booking->fresh(['customer', 'lot.block.property']),
+                    $customerDocumentTypes,
+                    replaceExisting: true,
+                );
+            } catch (\Throwable $exception) {
+                return back()->withErrors(['document' => $exception->getMessage()])->withInput();
+            }
+        }
+
+        foreach ($documentUploads as $documentType => $uploadedFile) {
+            $documentCategory = in_array($documentType, PemberkasanDocumentService::BI_CHECKING_DOCUMENT_TYPES, true)
+                ? 'standard'
+                : 'other';
+
+            try {
+                $this->pemberkasanDocumentService->uploadForBooking(
+                    $booking->fresh(['customer', 'lot.block.property', 'documentProcess']),
+                    $uploadedFile,
+                    $documentType,
+                    $request->user(),
+                    $documentCategory,
+                );
+            } catch (\Throwable $exception) {
+                return back()
+                    ->withErrors(['document_uploads.'.$documentType => $exception->getMessage()])
+                    ->withInput();
+            }
+        }
 
         return redirect()->route('pemberkasan.bookings.show', $booking)->with('success', 'Data pemberkasan berhasil diperbarui.');
     }

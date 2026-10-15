@@ -49,7 +49,7 @@
                                 </div>
                                 <form
                                     method="POST"
-                                    action="{{ route('pembangunan.properties.construction-stages.destroy', [$property, $stage]) }}"
+                                    action="{{ route('admin.property-construction-stages.destroy', [$property, $stage]) }}"
                                     onsubmit="return confirm('Hapus tahapan ini beserta progress kavling terkait?')"
                                 >
                                     @csrf
@@ -65,7 +65,7 @@
 
                         <form
                             method="POST"
-                            action="{{ route('pembangunan.properties.construction-stages.store', $property) }}"
+                            action="{{ route('admin.property-construction-stages.store', $property) }}"
                             class="grid gap-3 rounded-lg bg-zinc-50 p-4 sm:grid-cols-2 dark:bg-zinc-800"
                         >
                             @csrf

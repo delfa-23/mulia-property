@@ -12,8 +12,12 @@ class ConstructionProgressHistory extends Model
 
     protected $fillable = [
         'construction_progress_id',
+        'lot_id',
+        'stage_id',
         'progress',
         'previous_progress',
+        'realization',
+        'previous_realization',
         'updated_by',
         'notes',
     ];
@@ -23,6 +27,8 @@ class ConstructionProgressHistory extends Model
         return [
             'progress' => 'decimal:2',
             'previous_progress' => 'decimal:2',
+            'realization' => 'decimal:2',
+            'previous_realization' => 'decimal:2',
         ];
     }
 
@@ -37,5 +43,15 @@ class ConstructionProgressHistory extends Model
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function lot(): BelongsTo
+    {
+        return $this->belongsTo(Lot::class);
+    }
+
+    public function stage(): BelongsTo
+    {
+        return $this->belongsTo(ConstructionStage::class, 'stage_id');
     }
 }

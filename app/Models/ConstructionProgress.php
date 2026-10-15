@@ -15,6 +15,7 @@ class ConstructionProgress extends Model
         'lot_id',
         'stage_id',
         'progress',
+        'realization',
         'updated_by',
         'notes',
     ];
@@ -23,6 +24,7 @@ class ConstructionProgress extends Model
     {
         return [
             'progress' => 'decimal:2',
+            'realization' => 'decimal:2',
         ];
     }
 

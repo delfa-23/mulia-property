@@ -15,6 +15,8 @@ class ExpenseTransaction extends Model
         'property_id',
         'lot_id',
         'facility_id',
+        'division',
+        'budget_id',
         'transaction_number',
         'transaction_date',
         'category',
@@ -47,6 +49,11 @@ class ExpenseTransaction extends Model
             CommonFacility::class,
             'facility_id'
         );
+    }
+
+    public function budget(): BelongsTo
+    {
+        return $this->belongsTo(Budget::class);
     }
 
     public function createdBy(): BelongsTo

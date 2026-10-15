@@ -5,10 +5,11 @@ namespace App\Http\Controllers\Marketing;
 use App\Http\Controllers\Controller;
 use App\Models\Block;
 use App\Models\Booking;
-use App\Models\Budget;
 use App\Models\Customer;
 use App\Models\ExpenseTransaction;
 use App\Models\Lot;
+use App\Models\MarketingCashAccount;
+use App\Models\MarketingCashFlow;
 use App\Models\Property;
 use App\Models\Sales;
 use Illuminate\Http\Request;
@@ -127,23 +128,56 @@ class DashboardController extends Controller
         $salesPerformanceChartMax = max(1, (int) $salesPerformanceChart->max('bookings'));
 
         $financialStats = [
-            'total_budget' => $filterPropertyRecords(Budget::query())->sum('amount'),
-            'total_expense' => $filterPropertyRecords(ExpenseTransaction::query())->sum('amount'),
+            'total_house_price' => $filterLots(Lot::query())->sum('house_price'),
+            'total_expense' => $filterPropertyRecords(
+                ExpenseTransaction::query()->where('division', 'marketing')
+            )->sum('amount'),
         ];
-        $financialStats['deviation'] = $financialStats['total_budget'] - $financialStats['total_expense'];
 
         $recentExpenses = $filterPropertyRecords(ExpenseTransaction::query())
+            ->where('division', 'marketing')
             ->with(['property', 'lot', 'facility', 'createdBy'])
             ->latest('transaction_date')
             ->latest('id')
             ->limit(8)
             ->get();
         $expenseByCategory = $filterPropertyRecords(ExpenseTransaction::query())
+            ->where('division', 'marketing')
             ->select('category', DB::raw('SUM(amount) as total'))
             ->groupBy('category')
             ->orderByDesc('total')
             ->limit(6)
             ->get();
+
+        $cashAccounts = MarketingCashAccount::query()->orderBy('id')->get();
+        $today = today();
+        $cashFlowPlans = MarketingCashFlow::query()
+            ->with('property')
+            ->whereBetween('due_date', [$today->toDateString(), $today->copy()->addDays(30)->toDateString()])
+            ->when($propertyId, fn ($query) => $query->where(fn ($query) => $query
+                ->whereNull('property_id')
+                ->orWhere('property_id', $propertyId)))
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get();
+        $cashFlowForecasts = collect([7, 14, 30])
+            ->mapWithKeys(function (int $days) use ($cashFlowPlans, $today): array {
+                $plansInHorizon = $cashFlowPlans->filter(
+                    fn (MarketingCashFlow $plan): bool => $plan->due_date->lte($today->copy()->addDays($days))
+                );
+                $totals = [];
+
+                foreach (['income', 'outcome'] as $direction) {
+                    foreach (['confirmed', 'potential', 'forecast'] as $status) {
+                        $totals[$direction.'_'.$status] = (float) $plansInHorizon
+                            ->where('direction', $direction)
+                            ->where('status', $status)
+                            ->sum('amount');
+                    }
+                }
+
+                return [$days => $totals];
+            });
 
         $properties = Property::query()->orderBy('name')->get();
         $blocks = Block::query()
@@ -170,6 +204,9 @@ class DashboardController extends Controller
             'financialStats',
             'recentExpenses',
             'expenseByCategory',
+            'cashAccounts',
+            'cashFlowPlans',
+            'cashFlowForecasts',
             'bookingStatusChart',
             'monthlyBookingChart',
             'monthlyBookingChartMax',

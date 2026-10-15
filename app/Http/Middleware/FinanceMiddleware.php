@@ -16,7 +16,12 @@ class FinanceMiddleware
             abort(401);
         }
 
-        abort_unless($user->isAdmin() || $user->isAssignedToDivision('marketing'), 403);
+        abort_unless(
+            $user->isAdmin() ||
+                $user->isAssignedToDivision('marketing') ||
+                $user->isAssignedToDivision('pembangunan'),
+            403
+        );
 
         return $next($request);
     }

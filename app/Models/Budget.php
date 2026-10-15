@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Budget extends Model
 {
@@ -16,6 +17,7 @@ class Budget extends Model
         'facility_id',
         'name',
         'category',
+        'purpose',
         'amount',
         'period_start',
         'period_end',
@@ -56,5 +58,10 @@ class Budget extends Model
             User::class,
             'created_by'
         );
+    }
+
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(ExpenseTransaction::class);
     }
 }

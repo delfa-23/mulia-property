@@ -99,6 +99,8 @@
                                 'staff_marketing' => 'Staff Marketing',
                                 'tl_pemberkasan' => 'TL Pemberkasan',
                                 'staff_pemberkasan' => 'Staff Pemberkasan',
+                                'tl_keuangan' => 'TL Keuangan',
+                                'staff_keuangan' => 'Staff Keuangan',
                             ];
                         @endphp
 
@@ -224,6 +226,13 @@
                 role === 'staff_pemberkasan'
             ) {
                 division = 'Pemberkasan';
+            }
+
+            if (
+                role === 'tl_keuangan' ||
+                role === 'staff_keuangan'
+            ) {
+                division = 'Keuangan';
             }
 
             divisionInfo.textContent = division;

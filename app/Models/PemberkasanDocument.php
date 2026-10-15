@@ -16,6 +16,7 @@ class PemberkasanDocument extends Model
         'lot_id',
         'customer_id',
         'document_type',
+        'document_category',
         'original_name',
         'mime_type',
         'file_size',

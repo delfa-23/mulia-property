@@ -104,14 +104,9 @@ class PemberkasanDocumentController extends Controller
         PemberkasanDocumentService $documentService,
     ): RedirectResponse {
         try {
-            $document = $documentService->retryUpload($pemberkasanDocument, $request->user());
+            $documentService->retryUpload($pemberkasanDocument, $request->user());
 
-            return back()->with(
-                'success',
-                $document->status === 'uploaded'
-                    ? 'Upload ulang dokumen berhasil.'
-                    : 'Upload ulang dokumen telah ditambahkan ke antrean Google Drive.',
-            );
+            return back()->with('success', 'Upload ulang dokumen berhasil diunggah ke Google Drive.');
         } catch (\Throwable $exception) {
             return back()->withErrors(['document' => $exception->getMessage()]);
         }
@@ -133,10 +128,7 @@ class PemberkasanDocumentController extends Controller
                 $request->user(),
             );
 
-            return back()->with(
-                'success',
-                'File pengganti disimpan dan sedang menunggu upload ke Google Drive.',
-            );
+            return back()->with('success', 'File pengganti berhasil diunggah langsung ke Google Drive.');
         } catch (\Throwable $exception) {
             return back()->withErrors(['document' => $exception->getMessage()]);
         }

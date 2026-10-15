@@ -12,6 +12,17 @@
             </p>
         </div>
 
+        <div class="grid gap-3 sm:grid-cols-2">
+            <a href="{{ route('pembangunan.progress.index') }}" wire:navigate class="rounded-xl border border-blue-200 bg-blue-50 p-4 transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:hover:bg-blue-950/70">
+                <span class="block text-sm font-semibold text-blue-900 dark:text-blue-200">Progress Kavling</span>
+                <span class="mt-1 block text-sm text-blue-700 dark:text-blue-300">Tambah, edit, dan hapus laporan progress per tahap →</span>
+            </a>
+            <a href="{{ route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-xl border border-blue-200 bg-blue-50 p-4 transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:hover:bg-blue-950/70">
+                <span class="block text-sm font-semibold text-blue-900 dark:text-blue-200">Progress Fasilitas Umum</span>
+                <span class="mt-1 block text-sm text-blue-700 dark:text-blue-300">Tambah, edit, dan hapus laporan progress fasilitas →</span>
+            </a>
+        </div>
+
         <form method="GET" action="{{ route('pembangunan.dashboard') }}" class="grid gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-3 dark:border-zinc-700 dark:bg-zinc-900">
             <div>
                 <label for="property_id" class="mb-1 block text-sm font-medium text-gray-700 dark:text-zinc-300">Perumahan</label>

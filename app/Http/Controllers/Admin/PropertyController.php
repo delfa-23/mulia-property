@@ -15,7 +15,7 @@ class PropertyController extends Controller
 {
     public function index(Request $request): View
     {
-        $routePrefix = $this->routePrefix();
+        $routePrefix = 'admin.properties';
         $properties = Property::query()
             ->withCount([
                 'blocks',
@@ -55,7 +55,7 @@ class PropertyController extends Controller
     public function create(): View
     {
         return view('admin.properties.create', [
-            'routePrefix' => $this->routePrefix(),
+            'routePrefix' => 'admin.properties',
         ]);
     }
 
@@ -70,7 +70,7 @@ class PropertyController extends Controller
         Property::create($validated);
 
         return redirect()
-            ->route($this->routePrefix().'.index')
+            ->route('admin.properties.index')
             ->with('success', 'Property berhasil dibuat.');
     }
 
@@ -78,7 +78,7 @@ class PropertyController extends Controller
     {
         return view('admin.properties.edit', [
             'property' => $property,
-            'routePrefix' => $this->routePrefix(),
+            'routePrefix' => 'admin.properties',
         ]);
     }
 
@@ -95,7 +95,7 @@ class PropertyController extends Controller
         $property->update($validated);
 
         return redirect()
-            ->route($this->routePrefix().'.index')
+            ->route('admin.properties.index')
             ->with('success', 'Property berhasil diperbarui.');
     }
 
@@ -163,21 +163,14 @@ class PropertyController extends Controller
             || $property->constructionStages()->exists()
         ) {
             return redirect()
-                ->route($this->routePrefix().'.index')
+                ->route('admin.properties.index')
                 ->with('error', 'Property tidak dapat dihapus karena masih memiliki data terkait.');
         }
 
         $property->delete();
 
         return redirect()
-            ->route($this->routePrefix().'.index')
+            ->route('admin.properties.index')
             ->with('success', 'Property berhasil dihapus.');
-    }
-
-    private function routePrefix(): string
-    {
-        return request()->routeIs('pembangunan.properties.*')
-            ? 'pembangunan.properties'
-            : 'admin.properties';
     }
 }

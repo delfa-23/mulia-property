@@ -49,6 +49,8 @@ class UserController extends Controller
                     'staff_marketing',
                     'tl_pemberkasan',
                     'staff_pemberkasan',
+                    'tl_keuangan',
+                    'staff_keuangan',
                 ]),
             ],
         ]);
@@ -97,6 +99,8 @@ class UserController extends Controller
                     'staff_marketing',
                     'tl_pemberkasan',
                     'staff_pemberkasan',
+                    'tl_keuangan',
+                    'staff_keuangan',
                 ]),
             ],
         ]);

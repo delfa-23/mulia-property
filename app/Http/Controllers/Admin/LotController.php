@@ -17,7 +17,7 @@ class LotController extends Controller
         Property $property,
         Block $block
     ): View {
-        $routePrefix = $this->routePrefix();
+        $routePrefix = 'admin.properties';
         abort_unless(
             $block->property_id === $property->id,
             404
@@ -62,7 +62,7 @@ class LotController extends Controller
             'property' => $property,
             'block' => $block,
             'lotNumberSuffix' => $this->lotNumberSuffix($block, old('lot_number')),
-            'routePrefix' => $this->routePrefix(),
+            'routePrefix' => 'admin.properties',
         ]);
     }
 
@@ -105,7 +105,7 @@ class LotController extends Controller
         $block->lots()->create($validated);
 
         return redirect()
-            ->route($this->routePrefix().'.blocks.lots.index', [$property, $block])
+            ->route('admin.properties.blocks.lots.index', [$property, $block])
             ->with('success', 'Kavling berhasil dibuat.');
     }
 
@@ -128,7 +128,7 @@ class LotController extends Controller
                 $block,
                 old('lot_number', $lot->lot_number)
             ),
-            'routePrefix' => $this->routePrefix(),
+            'routePrefix' => 'admin.properties',
         ]);
     }
 
@@ -173,7 +173,7 @@ class LotController extends Controller
         $lot->update($validated);
 
         return redirect()
-            ->route($this->routePrefix().'.blocks.lots.index', [$property, $block])
+            ->route('admin.properties.blocks.lots.index', [$property, $block])
             ->with('success', 'Kavling berhasil diperbarui.');
     }
 
@@ -198,22 +198,15 @@ class LotController extends Controller
             $lot->alerts()->exists()
         ) {
             return redirect()
-                ->route($this->routePrefix().'.blocks.lots.index', [$property, $block])
+                ->route('admin.properties.blocks.lots.index', [$property, $block])
                 ->with('error', 'Kavling tidak dapat dihapus karena masih memiliki data terkait.');
         }
 
         $lot->delete();
 
         return redirect()
-            ->route($this->routePrefix().'.blocks.lots.index', [$property, $block])
+            ->route('admin.properties.blocks.lots.index', [$property, $block])
             ->with('success', 'Kavling berhasil dihapus.');
-    }
-
-    private function routePrefix(): string
-    {
-        return request()->routeIs('pembangunan.properties.*')
-            ? 'pembangunan.properties'
-            : 'admin.properties';
     }
 
     private function normalizeHousePriceInput(Request $request): void

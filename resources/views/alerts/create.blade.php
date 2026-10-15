@@ -1,9 +1,9 @@
-<x-layouts::app :title="__('Kirim Alert ke Admin')">
+<x-layouts::app :title="__('Kirim Alert')">
     <div class="mx-auto max-w-3xl space-y-6">
         <div>
             <a href="{{ route('dashboard') }}" class="text-sm text-zinc-500" wire:navigate>Kembali ke dashboard</a>
-            <h1 class="mt-3 text-2xl font-semibold">Kirim Alert ke Admin</h1>
-            <p class="mt-1 text-sm text-zinc-500">Gunakan alert untuk melaporkan kondisi penting yang membutuhkan perhatian atau keputusan Admin.</p>
+            <h1 class="mt-3 text-2xl font-semibold">Kirim Alert</h1>
+            <p class="mt-1 text-sm text-zinc-500">Admin selalu menerima alert. Divisi yang dipilih juga dapat melihat alert ini.</p>
         </div>
 
         @if(session('success'))<div class="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{{ session('success') }}</div>@endif
@@ -30,6 +30,32 @@
                     </select>
                     @error('severity')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
+            </div>
+
+            <div>
+                <label for="recipient-division-ids" class="mb-2 block text-sm font-medium">
+                    Divisi Tujuan
+                    @if(! $isAdmin)
+                        <span class="font-normal text-zinc-500">(opsional; Admin tetap menerima)</span>
+                    @endif
+                </label>
+                <select
+                    id="recipient-division-ids"
+                    name="recipient_division_ids[]"
+                    multiple
+                    @required($isAdmin)
+                    size="{{ min(max($divisions->count(), 2), 5) }}"
+                    class="w-full rounded-lg border border-zinc-300 px-3 py-2"
+                >
+                    @foreach($divisions as $division)
+                        <option value="{{ $division->id }}" @selected(in_array($division->id, old('recipient_division_ids', [])))>
+                            {{ $division->name }}
+                        </option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-xs text-zinc-500">Pilih satu atau beberapa divisi. Alert hanya terlihat oleh Admin dan divisi yang dipilih.</p>
+                @error('recipient_division_ids')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                @error('recipient_division_ids.*')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2">

@@ -14,7 +14,7 @@
 
         <div class="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
             <section class="relative isolate flex min-h-[230px] items-end overflow-hidden bg-[#10233D] sm:min-h-[280px] lg:min-h-screen">
-                <img src="{{ asset('images/mulia-residence.jpg') }}" alt="Kawasan perumahan Mulia Residence" fetchpriority="high" class="absolute inset-0 size-full object-cover object-center">
+                <img src="{{ asset('images/al-maksum-residence.jpeg') }}" alt="Kawasan perumahan Al Maksum Residence" fetchpriority="high" class="absolute inset-0 size-full object-cover object-center">
                 <div class="absolute inset-0 bg-[#10233D]/55"></div>
                 <div class="relative z-10 w-full p-6 text-white sm:p-10 lg:p-14">
                     <a href="{{ route('home') }}" class="mb-8 inline-flex items-center gap-3" style="margin-left: -0.5rem;" wire:navigate>

@@ -2,7 +2,7 @@
 
     @php
         $rab = $lot->budgets->sum('amount');
-        $realisasi = $lot->expenseTransactions->sum('amount');
+        $realisasi = (float) $constructionRealizationTotal;
         $depiasi = $rab - $realisasi;
         $progressFisik = (float) ($lot->constructionProgresses->whereNotNull('stage_id')->max('progress') ?? 0);
 
@@ -36,21 +36,37 @@
         <div
             x-data="{
                 modalOpen: false,
+                progressId: null,
+                storeUrl: @js(route('pembangunan.progress.store', [$property, $block, $lot])),
+                updateUrl: @js(route('pembangunan.progress.records.update', [$property, $block, $lot, '__PROGRESS_ID__'])),
                 stageId: '',
                 stageName: '',
                 minProgress: 0,
                 maxProgress: 100,
                 progress: 0,
+                realization: 0,
                 notes: '',
 
-                openEditModal(id, name, min, max, current, note) {
+                formatRupiah(value) {
+                    return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+                },
+
+                openEditModal(progressId, id, name, min, max, current, amount, note) {
+                    this.progressId = progressId;
                     this.stageId = id;
                     this.stageName = name;
                     this.minProgress = min;
                     this.maxProgress = max;
                     this.progress = current;
+                    this.realization = this.formatRupiah(amount);
                     this.notes = note;
                     this.modalOpen = true;
+                },
+
+                formAction() {
+                    return this.progressId
+                        ? this.updateUrl.replace('__PROGRESS_ID__', this.progressId)
+                        : this.storeUrl;
                 },
 
                 closeModal() {
@@ -194,7 +210,7 @@
                 </h2>
 
                 <p class="mt-1 text-sm text-zinc-500">
-                    Progress mengikuti range yang telah ditentukan Admin.
+                    Tambah, edit, atau hapus laporan setiap tahap. Progress mengikuti range yang telah ditentukan Admin.
                 </p>
             </div>
 
@@ -205,6 +221,8 @@
                             <th class="px-6 py-3">Tahapan</th>
                             <th class="px-6 py-3">Range</th>
                             <th class="px-6 py-3">Progress</th>
+                            <th class="px-6 py-3">Realisasi</th>
+                            <th class="px-6 py-3">Catatan</th>
                             <th class="px-6 py-3">Terakhir Update</th>
                             <th class="px-6 py-3 text-right">Aksi</th>
                         </tr>
@@ -252,6 +270,14 @@
                                     @endif
                                 </td>
 
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    Rp {{ number_format((float) ($progressData?->realization ?? 0), 0, ',', '.') }}
+                                </td>
+
+                                <td class="px-6 py-4 text-sm text-zinc-600">
+                                    {{ $progressData?->notes ?: '-' }}
+                                </td>
+
                                 <td class="px-6 py-4 text-zinc-500">
                                     @if($progressData)
                                         {{ $progressData->updated_at?->format('d/m/Y H:i') }}
@@ -264,17 +290,33 @@
                                     <button
                                         type="button"
                                         @click="openEditModal(
+                                            {{ $progressData?->id ?? 'null' }},
                                             {{ $stage->id }},
                                             @js($stage->name),
                                             {{ $stage->min_progress }},
                                             {{ $stage->max_progress }},
                                             {{ $progressData?->progress ?? $stage->min_progress }},
+                                            {{ $progressData?->realization ?? 0 }},
                                             @js($progressData?->notes ?? '')
                                         )"
                                         class="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
                                     >
-                                        Edit
+                                        {{ $progressData ? 'Edit Progress' : 'Tambah Progress' }}
                                     </button>
+                                    @if($progressData)
+                                        <form
+                                            method="POST"
+                                            action="{{ route('pembangunan.progress.records.destroy', [$property, $block, $lot, $progressData]) }}"
+                                            class="mt-2"
+                                            onsubmit="return confirm('Hapus progress tahap ini? Riwayat perubahan tetap disimpan.')"
+                                        >
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50">
+                                                Hapus
+                                            </button>
+                                        </form>
+                                    @endif
                                 </td>
                             </tr>
 
@@ -296,12 +338,7 @@
         </p>
     </div>
 
-    @php
-        $history = $lot->constructionProgressHistories
-            ->sortByDesc('created_at');
-    @endphp
-
-    @if($history->isEmpty())
+    @if($progressHistories->isEmpty())
         <div class="rounded-lg border border-dashed border-zinc-300 p-8 text-center">
             <p class="text-sm text-zinc-500">
                 Belum ada riwayat perubahan progress.
@@ -325,6 +362,10 @@
                         </th>
 
                         <th class="px-4 py-3 text-xs font-semibold uppercase text-zinc-500">
+                            Realisasi
+                        </th>
+
+                        <th class="px-4 py-3 text-xs font-semibold uppercase text-zinc-500">
                             Diubah Oleh
                         </th>
 
@@ -335,14 +376,14 @@
                 </thead>
 
                 <tbody class="divide-y divide-zinc-100">
-                    @foreach($history as $item)
+                    @foreach($progressHistories as $item)
                         <tr>
                             <td class="whitespace-nowrap px-4 py-4 text-sm text-zinc-700">
                                 {{ $item->created_at?->format('d/m/Y H:i') }}
                             </td>
 
                             <td class="px-4 py-4 text-sm font-medium text-zinc-900">
-                                {{ $item->constructionProgress?->stage?->name ?? '-' }}
+                                {{ $item->stage?->name ?? 'Tahap telah dihapus' }}
                             </td>
 
                             <td class="whitespace-nowrap px-4 py-4">
@@ -357,6 +398,12 @@
                                 <span class="font-semibold text-zinc-900">
                                     {{ number_format((float) $item->progress, 2) }}%
                                 </span>
+                            </td>
+
+                            <td class="whitespace-nowrap px-4 py-4 text-sm">
+                                Rp {{ number_format((float) ($item->previous_realization ?? 0), 0, ',', '.') }}
+                                →
+                                Rp {{ number_format((float) $item->realization, 0, ',', '.') }}
                             </td>
 
                             <td class="px-4 py-4 text-sm text-zinc-700">
@@ -385,7 +432,7 @@
 
         <div class="mb-6">
             <h2 class="text-lg font-semibold">
-                Edit Progress
+                <span x-text="progressId ? 'Edit Progress' : 'Tambah Progress'"></span>
             </h2>
 
             <p class="mt-1 text-sm text-zinc-500">
@@ -395,10 +442,10 @@
 
         <form
             method="POST"
-            action="{{ route('pembangunan.progress.update', [$property, $block, $lot]) }}"
+            :action="formAction()"
         >
             @csrf
-            @method('PUT')
+            <input type="hidden" name="_method" value="PUT" :disabled="!progressId">
 
             <input
                 type="hidden"
@@ -463,6 +510,30 @@
                     ></textarea>
                 </div>
 
+                <div>
+                    <label
+                        for="modal-realization"
+                        class="mb-2 block text-sm font-medium"
+                    >
+                        Realisasi Pengeluaran (Rp)
+                    </label>
+
+                    <input
+                        id="modal-realization"
+                        type="text"
+                        name="realization"
+                        inputmode="decimal"
+                        x-model="realization"
+                        data-currency-input
+                        data-currency-min="0"
+                        required
+                        class="w-full rounded-lg border border-zinc-300 px-4 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                    >
+                    <p class="mt-1 text-xs text-zinc-500">
+                        Nominal akan dikirim sebagai angka dan disimpan tanpa format.
+                    </p>
+                </div>
+
             </div>
 
             <div class="mt-6 flex justify-end gap-3">
@@ -478,7 +549,7 @@
                     type="submit"
                     class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
-                    Simpan Progress
+                    <span x-text="progressId ? 'Simpan Perubahan' : 'Tambah Progress'"></span>
                 </button>
             </div>
 

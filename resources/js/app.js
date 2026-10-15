@@ -122,31 +122,25 @@ const filterPropertyOptions = (form) => {
 	});
 };
 
-const initializeExpenseTargetSelectors = (form) => {
+const initializeBudgetTargetSelectors = (form) => {
 	const propertySelect = form.querySelector('[data-property-select]');
-	const lotSelect = form.querySelector('[data-lot-select][data-expense-target]');
-	const facilitySelect = form.querySelector('[data-facility-select][data-expense-target]');
+	const lotSelect = form.querySelector('[data-lot-select][data-budget-target]');
+	const facilitySelect = form.querySelector('[data-facility-select][data-budget-target]');
 
 	if (!propertySelect || !lotSelect || !facilitySelect) {
 		return;
 	}
 
 	const propertySelected = propertySelect.value !== '';
+	const bothTargetsSelected = lotSelect.value !== '' && facilitySelect.value !== '';
 
-	if (lotSelect.value !== '' && facilitySelect.value !== '') {
-		lotSelect.disabled = !propertySelected;
-		facilitySelect.disabled = !propertySelected;
-
-		return;
-	}
-
-	lotSelect.disabled = !propertySelected || facilitySelect.value !== '';
-	facilitySelect.disabled = !propertySelected || lotSelect.value !== '';
+	lotSelect.disabled = !propertySelected || (!bothTargetsSelected && facilitySelect.value !== '');
+	facilitySelect.disabled = !propertySelected || (!bothTargetsSelected && lotSelect.value !== '');
 };
 
 const initializeLotFilters = () => {
 	document.querySelectorAll('form').forEach((form) => filterPropertyOptions(form));
-	document.querySelectorAll('form').forEach((form) => initializeExpenseTargetSelectors(form));
+	document.querySelectorAll('form').forEach((form) => initializeBudgetTargetSelectors(form));
 };
 
 initializeCurrencyInputs();
@@ -165,40 +159,36 @@ document.addEventListener('change', (event) => {
 		const form = event.target.closest('form');
 
 		if (form) {
+			const expenseBudgetSelect = form.querySelector('[data-expense-budget-select]');
+
+			const selectedBudgetPropertyId = expenseBudgetSelect?.selectedOptions[0]?.dataset.propertyId;
+
+			if (expenseBudgetSelect && selectedBudgetPropertyId && selectedBudgetPropertyId !== event.target.value) {
+				expenseBudgetSelect.value = '';
+			}
+
 			filterPropertyOptions(form);
-			initializeExpenseTargetSelectors(form);
+			initializeBudgetTargetSelectors(form);
 		}
 	}
 }, true);
 document.addEventListener('change', (event) => {
-	if (!(event.target instanceof HTMLSelectElement) || !event.target.matches('[data-expense-target]')) {
+	if (!(event.target instanceof HTMLSelectElement) || !event.target.matches('[data-budget-target]')) {
 		return;
 	}
 
 	const form = event.target.closest('form');
-	const otherTarget = form?.querySelector(
-		event.target.matches('[data-lot-select]')
-			? '[data-facility-select][data-expense-target]'
-			: '[data-lot-select][data-expense-target]',
-	);
 
-	if (event.target.value && otherTarget) {
-		otherTarget.value = '';
-	}
-
-	if (form) {
-		initializeExpenseTargetSelectors(form);
-	}
-});
-document.addEventListener('change', (event) => {
-	if (event.target instanceof HTMLSelectElement && event.target.matches('[data-budget-target]') && event.target.value) {
-		const form = event.target.closest('form');
-
-		form?.querySelectorAll('[data-budget-target]').forEach((select) => {
+	if (event.target.value && form) {
+		form.querySelectorAll('[data-budget-target]').forEach((select) => {
 			if (select !== event.target) {
 				select.value = '';
 			}
 		});
+	}
+
+	if (form) {
+		initializeBudgetTargetSelectors(form);
 	}
 });
 document.addEventListener('submit', (event) => {

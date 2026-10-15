@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Jobs\UploadGoogleDriveDocument;
 use App\Models\Booking;
 use App\Models\PemberkasanDocument;
 use App\Models\User;
@@ -13,17 +12,102 @@ use RuntimeException;
 
 class PemberkasanDocumentService
 {
+    public const BI_CHECKING_DOCUMENT_TYPES = [
+        'KTP Pemohon',
+        'KTP Pasangan',
+    ];
+
+    public const LEGACY_BI_CHECKING_DOCUMENT_TYPES = [
+        'KTP',
+    ];
+
+    public const ADDITIONAL_MARKETING_DOCUMENT_TYPES = [
+        'Kartu Keluarga',
+        'Buku Nikah',
+        'NPWP',
+        'SK Kerja/SK Usaha Suami',
+        'SK Kerja/SK Usaha Istri',
+        'Slip Gaji/SK Penghasilan Suami',
+        'Slip Gaji/SK Penghasilan Istri',
+        'Rek Koran Pemohon/Pasangan',
+        'Foto Tempat Kerja/Usaha Pemohon',
+        'Foto Tempat Kerja Pasangan (Jika Bekerja/Usaha)',
+    ];
+
+    public const PROPERTY_DOCUMENT_TYPES = [
+        'SPR',
+        'SHGB',
+        'PBG',
+    ];
+
+    public const LEGACY_ADDITIONAL_DOCUMENT_TYPES = [
+        'KK',
+        'Dokumen Pemesanan',
+        'Surat Pemesanan',
+    ];
+
+    public const BOOKING_DOCUMENT_TYPES = [
+        'KTP Pemohon',
+        'KTP Pasangan',
+        'Kartu Keluarga',
+        'Buku Nikah',
+        'NPWP',
+        'SK Kerja/SK Usaha Suami',
+        'SK Kerja/SK Usaha Istri',
+        'Slip Gaji/SK Penghasilan Suami',
+        'Slip Gaji/SK Penghasilan Istri',
+        'Rek Koran Pemohon/Pasangan',
+        'Foto Tempat Kerja/Usaha Pemohon',
+        'Foto Tempat Kerja Pasangan (Jika Bekerja/Usaha)',
+        'SPR',
+        'SHGB',
+        'PBG',
+        'KTP',
+        'KK',
+        'Dokumen Pemesanan',
+        'Surat Pemesanan',
+    ];
+
+    public const MARKETING_DOCUMENT_TYPES = [
+        'KTP Pemohon',
+        'KTP Pasangan',
+        'Kartu Keluarga',
+        'Buku Nikah',
+        'NPWP',
+        'SK Kerja/SK Usaha Suami',
+        'SK Kerja/SK Usaha Istri',
+        'Slip Gaji/SK Penghasilan Suami',
+        'Slip Gaji/SK Penghasilan Istri',
+        'Rek Koran Pemohon/Pasangan',
+        'Foto Tempat Kerja/Usaha Pemohon',
+        'Foto Tempat Kerja Pasangan (Jika Bekerja/Usaha)',
+    ];
+
     public function __construct(protected GoogleDriveService $googleDriveService) {}
 
-    public function uploadForBooking(Booking $booking, UploadedFile $uploadedFile, string $documentType, ?User $user = null): PemberkasanDocument
-    {
+    public function uploadForBooking(
+        Booking $booking,
+        UploadedFile $uploadedFile,
+        string $documentType,
+        ?User $user = null,
+        string $documentCategory = 'standard',
+    ): PemberkasanDocument {
         $documentType = trim($documentType);
 
         if ($documentType === '') {
             throw new \InvalidArgumentException('Jenis dokumen wajib dipilih.');
         }
 
-        $document = $this->resolveDocument($booking, $documentType);
+        if (! in_array($documentCategory, ['standard', 'other'], true)) {
+            throw new \InvalidArgumentException('Kategori dokumen tidak valid.');
+        }
+
+        $requiredCategory = $this->requiredCategoryFor($documentType);
+        if ($requiredCategory !== null && $documentCategory !== $requiredCategory) {
+            throw new \InvalidArgumentException('Kategori dokumen tidak sesuai dengan jenis berkas.');
+        }
+
+        $document = $this->resolveDocument($booking, $documentType, $documentCategory);
 
         if ($document->exists && in_array($document->status, ['pending', 'uploading'], true)) {
             throw new RuntimeException('Dokumen ini masih menunggu atau sedang diproses oleh Google Drive.');
@@ -36,6 +120,7 @@ class PemberkasanDocumentService
         $document->lot_id = $booking->lot?->id;
         $document->customer_id = $booking->customer?->id;
         $document->document_type = $documentType;
+        $document->document_category = $documentCategory;
         $document->original_name = $uploadedFile->getClientOriginalName();
         $document->mime_type = $uploadedFile->getMimeType() ?: 'application/octet-stream';
         $document->file_size = $uploadedFile->getSize();
@@ -46,9 +131,7 @@ class PemberkasanDocumentService
         $document->uploaded_at = null;
         $document->save();
 
-        UploadGoogleDriveDocument::dispatch($document->id)->afterCommit();
-
-        return $document->fresh();
+        return $this->uploadImmediately($document);
     }
 
     public function retryUpload(PemberkasanDocument $document, ?User $user = null): PemberkasanDocument
@@ -69,9 +152,7 @@ class PemberkasanDocumentService
         $document->uploaded_by = $user?->id ?? $document->uploaded_by;
         $document->save();
 
-        UploadGoogleDriveDocument::dispatch($document->id)->afterCommit();
-
-        return $document->fresh();
+        return $this->uploadImmediately($document);
     }
 
     public function replaceDocument(
@@ -103,7 +184,24 @@ class PemberkasanDocumentService
             Storage::disk('local')->delete($previousReplacementPath);
         }
 
-        UploadGoogleDriveDocument::dispatch($document->id)->afterCommit();
+        return $this->uploadImmediately($document);
+    }
+
+    private function uploadImmediately(PemberkasanDocument $document): PemberkasanDocument
+    {
+        try {
+            $this->uploadStoredDocument($document->id);
+        } catch (\Throwable $exception) {
+            $document->refresh();
+            $document->status = 'failed';
+            $document->save();
+
+            throw new RuntimeException(
+                $document->upload_error ?: $exception->getMessage(),
+                0,
+                $exception,
+            );
+        }
 
         return $document->fresh();
     }
@@ -215,6 +313,7 @@ class PemberkasanDocumentService
 
             $existingDocument = PemberkasanDocument::query()
                 ->where('booking_id', $booking->id)
+                ->where('document_category', $this->requiredCategoryFor($documentType) ?? 'standard')
                 ->where('document_type', $documentType)
                 ->first();
 
@@ -236,16 +335,26 @@ class PemberkasanDocumentService
                 true,
             );
 
-            $results[] = $this->uploadForBooking($booking, $uploadedFile, $documentType, auth()->user());
+            $results[] = $this->uploadForBooking(
+                $booking,
+                $uploadedFile,
+                $documentType,
+                auth()->user(),
+                $this->requiredCategoryFor($documentType) ?? 'standard',
+            );
         }
 
         return $results;
     }
 
-    private function resolveDocument(Booking $booking, string $documentType): PemberkasanDocument
-    {
+    private function resolveDocument(
+        Booking $booking,
+        string $documentType,
+        string $documentCategory,
+    ): PemberkasanDocument {
         return PemberkasanDocument::query()
             ->where('booking_id', $booking->id)
+            ->where('document_category', $documentCategory)
             ->where('document_type', $documentType)
             ->firstOrNew();
     }
@@ -292,13 +401,35 @@ class PemberkasanDocumentService
         $normalizedType = Str::lower(trim($documentType));
 
         return match (true) {
-            $normalizedType === 'ktp' => 'KTP',
-            $normalizedType === 'kk' => 'KK',
+            str_starts_with($normalizedType, 'ktp') => 'KTP',
+            $normalizedType === 'kk' || str_contains($normalizedType, 'kartu keluarga') => 'KK',
             $normalizedType === 'npwp' => 'NPWP',
             $normalizedType === 'sp3' => 'SP3',
+            in_array($normalizedType, ['dokumen pemesanan', 'surat pemesanan'], true) => 'DOKUMEN PEMESANAN',
+            in_array($normalizedType, ['spr', 'shgb', 'pbg'], true) => 'DOKUMEN PROPERTI',
             str_contains($normalizedType, 'akad') => 'DOKUMEN AKAD',
             default => 'DOKUMEN LAINNYA',
         };
+    }
+
+    private function requiredCategoryFor(string $documentType): ?string
+    {
+        if (
+            in_array($documentType, self::BI_CHECKING_DOCUMENT_TYPES, true) ||
+            in_array($documentType, self::LEGACY_BI_CHECKING_DOCUMENT_TYPES, true)
+        ) {
+            return 'standard';
+        }
+
+        if (
+            in_array($documentType, self::ADDITIONAL_MARKETING_DOCUMENT_TYPES, true) ||
+            in_array($documentType, self::PROPERTY_DOCUMENT_TYPES, true) ||
+            in_array($documentType, self::LEGACY_ADDITIONAL_DOCUMENT_TYPES, true)
+        ) {
+            return 'other';
+        }
+
+        return null;
     }
 
     private function buildDocumentFileName(string $documentType, string $customerName, string $originalName): string

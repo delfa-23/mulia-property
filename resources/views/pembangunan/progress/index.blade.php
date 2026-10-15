@@ -10,6 +10,9 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-zinc-400">
                 Monitoring progress pembangunan berdasarkan project dan kavling.
             </p>
+            <p class="mt-2 text-sm text-gray-600 dark:text-zinc-300">
+                Pilih kavling untuk menambah, mengubah, atau menghapus laporan progress tahap pembangunan.
+            </p>
         </div>
 
 
@@ -163,7 +166,7 @@
                                 @php
                                     $rab = $lot->budgets->sum('amount');
 
-                                    $realisasi = $lot->expenseTransactions->sum('amount');
+                                    $realisasi = (float) ($lot->construction_realization_total ?? 0);
 
                                     $depiasi = $rab - $realisasi;
 
@@ -222,6 +225,10 @@
                                 </td>
 
                                 <td class="px-5 py-4 text-sm">
+                                    @php
+                                        $hasReportedProgress = $lot->constructionProgresses
+                                            ->contains(fn ($progress) => $progress->stage_id !== null);
+                                    @endphp
                                     <a
                                         href="{{ route('pembangunan.progress.show', [
                                             'property' => $lot->block->property,
@@ -230,7 +237,7 @@
                                         ]) }}"
                                         class="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                                     >
-                                        Detail Progress
+                                        {{ $hasReportedProgress ? 'Kelola Progress' : 'Tambah Progress' }}
                                     </a>
                                 </td>
 

@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Pembangunan;
 
 use App\Http\Controllers\Controller;
 use App\Models\Block;
+use App\Models\ConstructionProgress;
 use App\Models\ConstructionProgressHistory;
 use App\Models\ConstructionStage;
 use App\Models\Lot;
 use App\Models\Property;
+use App\Services\ActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ProgressController extends Controller
@@ -36,10 +39,12 @@ class ProgressController extends Controller
             ->with([
                 'block.property',
                 'bookings.customer',
-                'budgets',
-                'expenseTransactions',
-                'constructionProgresses',
+                'budgets' => fn ($query) => $query->where('purpose', 'pembangunan'),
+                'constructionProgresses.stage',
             ])
+            ->withSum([
+                'constructionProgresses as construction_realization_total' => fn ($query) => $query->whereNotNull('stage_id'),
+            ], 'realization')
             ->when($request->filled('property_id'), function ($query) use ($request) {
                 $query->whereHas(
                     'block',
@@ -80,13 +85,18 @@ class ProgressController extends Controller
         $lot->load([
             'block.property',
             'bookings.customer',
-            'budgets',
-            'expenseTransactions',
+            'budgets' => fn ($query) => $query->where('purpose', 'pembangunan'),
             'constructionProgresses.stage',
             'constructionProgresses.updatedBy',
-            'constructionProgressHistories.constructionProgress.stage',
-            'constructionProgressHistories.updatedBy',
         ]);
+        $constructionRealizationTotal = $lot->constructionProgresses
+            ->whereNotNull('stage_id')
+            ->sum('realization');
+        $progressHistories = ConstructionProgressHistory::query()
+            ->where('lot_id', $lot->id)
+            ->with(['stage', 'updatedBy'])
+            ->latest()
+            ->get();
 
         $propertyHasStages = $property->constructionStages()->exists();
         $stages = ConstructionStage::query()
@@ -101,23 +111,94 @@ class ProgressController extends Controller
                 'property',
                 'block',
                 'lot',
-                'stages'
+                'stages',
+                'progressHistories',
+                'constructionRealizationTotal',
             )
         );
+    }
+
+    public function store(
+        Request $request,
+        Property $property,
+        Block $block,
+        Lot $lot,
+    ): RedirectResponse {
+        $this->assertLotScope($property, $block, $lot);
+        $validated = $this->validatedProgress($request, $property);
+
+        abort_if(
+            $lot->constructionProgresses()->where('stage_id', $validated['stage_id'])->exists(),
+            409,
+            'Progress tahap ini sudah dibuat. Gunakan aksi edit.'
+        );
+
+        $this->saveProgress($request, $lot, $validated);
+
+        return $this->progressRedirect($property, $block, $lot, 'Progress pembangunan berhasil ditambahkan.');
     }
 
     public function update(
         Request $request,
         Property $property,
         Block $block,
-        Lot $lot
+        Lot $lot,
+        ?ConstructionProgress $constructionProgress = null,
     ): RedirectResponse {
+        $this->assertLotScope($property, $block, $lot);
+
+        if ($constructionProgress !== null) {
+            abort_unless($constructionProgress->lot_id === $lot->id, 404);
+        }
+
+        $validated = $this->validatedProgress($request, $property);
+
+        if ($constructionProgress !== null && $constructionProgress->stage_id !== (int) $validated['stage_id']) {
+            abort(404);
+        }
+
+        $this->saveProgress($request, $lot, $validated);
+
+        return $this->progressRedirect($property, $block, $lot, 'Progress pembangunan berhasil diperbarui.');
+    }
+
+    public function destroy(
+        Request $request,
+        Property $property,
+        Block $block,
+        Lot $lot,
+        ConstructionProgress $constructionProgress,
+        ActivityLogger $activityLogger,
+    ): RedirectResponse {
+        $this->assertLotScope($property, $block, $lot);
+        abort_unless($constructionProgress->lot_id === $lot->id, 404);
+
+        DB::transaction(function () use ($request, $constructionProgress, $activityLogger): void {
+            $stageName = $constructionProgress->stage?->name ?? 'tahap pembangunan';
+            $activityLogger->record(
+                $request,
+                'construction_progress.deleted',
+                $constructionProgress,
+                'Progress '.$stageName.' dihapus; riwayat perubahan tetap disimpan.'
+            );
+            $constructionProgress->delete();
+        });
+
+        return $this->progressRedirect($property, $block, $lot, 'Progress pembangunan dihapus. Riwayat perubahan tetap tersimpan.');
+    }
+
+    private function assertLotScope(Property $property, Block $block, Lot $lot): void
+    {
         abort_unless(
             $block->property_id === $property->id &&
                 $lot->block_id === $block->id,
             404
         );
+    }
 
+    /** @return array<string, mixed> */
+    private function validatedProgress(Request $request, Property $property): array
+    {
         $propertyHasStages = $property->constructionStages()->exists();
         $validated = $request->validate([
             'stage_id' => [
@@ -130,57 +211,72 @@ class ProgressController extends Controller
                 ),
             ],
             'progress' => ['required', 'numeric', 'min:0', 'max:100'],
+            'realization' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
             'notes' => ['nullable', 'string'],
         ]);
 
         $stage = ConstructionStage::findOrFail($validated['stage_id']);
 
-        // Pastikan progress mengikuti range yang ditentukan Admin
-        if (
-            $validated['progress'] < $stage->min_progress ||
-            $validated['progress'] > $stage->max_progress
-        ) {
-            return back()
-                ->withErrors([
-                    'progress' => sprintf(
-                        'Progress tahap %s harus berada di antara %s%% sampai %s%%.',
-                        $stage->name,
-                        $stage->min_progress,
-                        $stage->max_progress
-                    ),
-                ])
-                ->withInput();
+        if ($validated['progress'] < $stage->min_progress || $validated['progress'] > $stage->max_progress) {
+            throw ValidationException::withMessages([
+                'progress' => sprintf(
+                    'Progress tahap %s harus berada di antara %s%% sampai %s%%.',
+                    $stage->name,
+                    $stage->min_progress,
+                    $stage->max_progress
+                ),
+            ]);
         }
 
-        DB::transaction(function () use ($lot, $request, $validated): void {
-            $constructionProgress = $lot->constructionProgresses()
-                ->where('stage_id', $validated['stage_id'])
-                ->first();
+        return $validated;
+    }
 
-            $progress = $lot->constructionProgresses()->updateOrCreate(
-                ['stage_id' => $validated['stage_id']],
-                [
-                    'progress' => $validated['progress'],
-                    'updated_by' => $request->user()->id,
-                    'notes' => $validated['notes'] ?? null,
-                ]
-            );
+    /** @param array<string, mixed> $validated */
+    private function saveProgress(Request $request, Lot $lot, array $validated): ConstructionProgress
+    {
+        return DB::transaction(function () use ($lot, $request, $validated): ConstructionProgress {
+            $existingProgress = $lot->constructionProgresses()
+                ->where('stage_id', $validated['stage_id'])
+                ->lockForUpdate()
+                ->first();
+            $progress = $existingProgress ?? $lot->constructionProgresses()->make([
+                'stage_id' => $validated['stage_id'],
+            ]);
+            $progress->fill([
+                'progress' => $validated['progress'],
+                'realization' => $validated['realization'],
+                'updated_by' => $request->user()->id,
+                'notes' => $validated['notes'] ?? null,
+            ])->save();
 
             ConstructionProgressHistory::create([
                 'construction_progress_id' => $progress->id,
+                'lot_id' => $lot->id,
+                'stage_id' => $progress->stage_id,
                 'progress' => $progress->progress,
-                'previous_progress' => $constructionProgress?->progress,
+                'previous_progress' => $existingProgress?->progress,
+                'realization' => $progress->realization,
+                'previous_realization' => $existingProgress?->realization,
                 'updated_by' => $request->user()->id,
                 'notes' => $progress->notes,
             ]);
-        });
 
+            return $progress;
+        });
+    }
+
+    private function progressRedirect(
+        Property $property,
+        Block $block,
+        Lot $lot,
+        string $message,
+    ): RedirectResponse {
         return redirect()
             ->route('pembangunan.progress.show', [
                 'property' => $property,
                 'block' => $block,
                 'lot' => $lot,
             ])
-            ->with('success', 'Progress pembangunan berhasil diperbarui.');
+            ->with('success', $message);
     }
 }

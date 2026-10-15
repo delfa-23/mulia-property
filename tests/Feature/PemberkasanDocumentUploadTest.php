@@ -58,6 +58,9 @@ test('pemberkasan staff can upload a customer document to google drive and save 
     config(['services.google_drive.root_folder_id' => 'root-folder']);
 
     $googleDriveService = Mockery::mock(GoogleDriveService::class);
+    $googleDriveService->shouldReceive('configuredRootFolderId')
+        ->twice()
+        ->andReturn('root-folder');
     foreach ([
         ['Griya Asri', 'root-folder', 'property-folder'],
         ['A', 'property-folder', 'block-folder'],
@@ -66,7 +69,7 @@ test('pemberkasan staff can upload a customer document to google drive and save 
         ['KTP', 'customer-folder', 'document-folder'],
     ] as [$name, $parentId, $folderId]) {
         $googleDriveService->shouldReceive('findOrCreateFolder')
-            ->once()
+            ->twice()
             ->with($name, $parentId)
             ->andReturn([
                 'id' => $folderId,
@@ -88,6 +91,18 @@ test('pemberkasan staff can upload a customer document to google drive and save 
             'mimeType' => 'application/pdf',
             'url' => 'https://drive.google.com/file/d/file-123/view',
         ]);
+    $googleDriveService->shouldReceive('updateFile')
+        ->once()
+        ->withArgs(fn (string $fileId, string $path, string $name, string $mimeType): bool => $fileId === 'file-123'
+            && $name === 'KTP_Budi Santoso.pdf'
+            && $mimeType === 'application/pdf'
+            && is_file($path))
+        ->andReturn([
+            'id' => 'file-123',
+            'name' => 'KTP_Budi Santoso.pdf',
+            'mimeType' => 'application/pdf',
+            'url' => 'https://drive.google.com/file/d/file-123/view',
+        ]);
     $googleDriveService->shouldReceive('getFileUrl')
         ->never();
 
@@ -100,19 +115,13 @@ test('pemberkasan staff can upload a customer document to google drive and save 
     ]);
 
     $response->assertRedirect();
-    $response->assertSessionHas('success', 'Dokumen tersimpan di sistem dan sedang menunggu upload ke Google Drive.');
+    $response->assertSessionHas('success', 'Dokumen KTP berhasil diunggah langsung ke Google Drive.');
 
     $document = PemberkasanDocument::query()->where('booking_id', $booking->id)->firstOrFail();
 
-    expect($document->status)->toBe('pending')
+    expect($document->status)->toBe('uploaded')
+        ->and($document->drive_file_id)->toBe('file-123')
         ->and($document->local_path)->not->toBeNull();
-
-    Queue::assertPushed(
-        UploadGoogleDriveDocument::class,
-        fn (UploadGoogleDriveDocument $job): bool => $job->documentId === $document->id,
-    );
-
-    $this->app->make(PemberkasanDocumentService::class)->uploadStoredDocument($document->id);
 
     $this->assertDatabaseHas('pemberkasan_documents', [
         'booking_id' => $booking->id,
@@ -130,15 +139,62 @@ test('pemberkasan staff can upload a customer document to google drive and save 
     $retriedDocument = $this->app->make(PemberkasanDocumentService::class)
         ->retryUpload($document, $user);
 
-    expect($retriedDocument->status)->toBe('pending')
+    expect($retriedDocument->status)->toBe('uploaded')
         ->and($retriedDocument->retry_count)->toBe(1)
         ->and($retriedDocument->local_path)->toBe($document->local_path);
+    Queue::assertNotPushed(UploadGoogleDriveDocument::class);
+});
 
-    (new UploadGoogleDriveDocument($retriedDocument->id))
-        ->failed(new RuntimeException('Google Drive retry failed.'));
+test('booking customer document links open the uploaded Google Drive file instead of local storage', function () {
+    $division = Division::create([
+        'name' => 'Pemberkasan',
+        'slug' => 'pemberkasan',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_pemberkasan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Griya Asri']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 500000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create([
+        'name' => 'Budi Santoso',
+        'ktp_file' => 'customers/documents/ktp.png',
+    ]);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-09-30',
+        'status' => 'booking',
+    ]);
+    PemberkasanDocument::create([
+        'booking_id' => $booking->id,
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'document_type' => 'KTP',
+        'original_name' => 'ktp.png',
+        'mime_type' => 'image/png',
+        'file_size' => 120,
+        'local_path' => 'pemberkasan/documents/ktp.png',
+        'drive_file_id' => 'drive-file-123',
+        'drive_folder_id' => 'drive-folder-123',
+        'drive_url' => 'https://drive.google.com/file/d/drive-file-123/view',
+        'status' => 'uploaded',
+        'uploaded_at' => now(),
+    ]);
 
-    expect($retriedDocument->fresh()->status)->toBe('failed')
-        ->and($retriedDocument->fresh()->upload_error)->toBe('Google Drive retry failed.');
+    $response = $this->actingAs($user)->get(route('pemberkasan.bookings.show', $booking));
+
+    $response->assertSee('href="https://drive.google.com/file/d/drive-file-123/view"', false)
+        ->assertSee('Lihat dokumen di Google Drive')
+        ->assertDontSee('/storage/customers/documents/ktp.png');
 });
 
 test('pemberkasan staff can replace an existing customer document in google drive', function () {
@@ -189,6 +245,9 @@ test('pemberkasan staff can replace an existing customer document in google driv
     config(['services.google_drive.root_folder_id' => 'root-folder']);
 
     $googleDriveService = Mockery::mock(GoogleDriveService::class);
+    $googleDriveService->shouldReceive('configuredRootFolderId')
+        ->once()
+        ->andReturn('root-folder');
     foreach ([
         ['Griya Asri', 'root-folder', 'property-folder'],
         ['A', 'property-folder', 'block-folder'],
@@ -220,7 +279,6 @@ test('pemberkasan staff can replace an existing customer document in google driv
         ]);
     $googleDriveService->shouldReceive('getFileUrl')->never();
     $this->app->instance(GoogleDriveService::class, $googleDriveService);
-    Queue::fake([UploadGoogleDriveDocument::class]);
 
     $this->actingAs($user)
         ->put(route('pemberkasan.bookings.update', $booking), [
@@ -231,15 +289,9 @@ test('pemberkasan staff can replace an existing customer document in google driv
         ->assertSessionHas('success', 'Data pemberkasan berhasil diperbarui.');
 
     $document = $document->fresh();
-    expect($document->status)->toBe('pending')
+    expect($document->status)->toBe('uploaded')
         ->and($document->drive_file_id)->toBe('drive-file-123')
         ->and($document->local_path)->not->toBe($oldLocalPath);
-    Queue::assertPushed(
-        UploadGoogleDriveDocument::class,
-        fn (UploadGoogleDriveDocument $job): bool => $job->documentId === $document->id,
-    );
-
-    $this->app->make(PemberkasanDocumentService::class)->uploadStoredDocument($document->id);
 
     $this->assertDatabaseHas('pemberkasan_documents', [
         'id' => $document->id,
@@ -349,6 +401,9 @@ test('admin can replace an uploaded document and delete it from Google Drive', f
     config(['services.google_drive.root_folder_id' => 'root-folder']);
 
     $googleDriveService = Mockery::mock(GoogleDriveService::class);
+    $googleDriveService->shouldReceive('configuredRootFolderId')
+        ->once()
+        ->andReturn('root-folder');
     foreach ([
         ['Griya Asri', 'root-folder'],
         ['A', 'property-folder'],
@@ -377,9 +432,8 @@ test('admin can replace an uploaded document and delete it from Google Drive', f
         ->once()
         ->with('drive-file-123')
         ->andReturnTrue();
-
     $this->app->instance(GoogleDriveService::class, $googleDriveService);
-    Queue::fake([UploadGoogleDriveDocument::class]);
+    $this->app->instance(GoogleDriveService::class, $googleDriveService);
 
     $replacementResponse = $this->actingAs($admin)
         ->put(route('admin.google-drive.documents.replace', $document), [
@@ -387,21 +441,14 @@ test('admin can replace an uploaded document and delete it from Google Drive', f
         ]);
 
     $replacementResponse->assertRedirect()
-        ->assertSessionHas('success', 'File pengganti disimpan dan sedang menunggu upload ke Google Drive.');
+        ->assertSessionHas('success', 'File pengganti berhasil diunggah langsung ke Google Drive.');
     $document = $document->fresh();
-    $replacementPath = $document->replacement_local_path
-        ?? throw new RuntimeException('Replacement file should be staged before upload.');
+    $replacementPath = $document->local_path;
 
-    expect($document->status)->toBe('pending')
+    expect($document->status)->toBe('uploaded')
         ->and($document->original_name)->toBe('replacement.pdf')
-        ->and($replacementPath)->not->toBeNull()
-        ->and(Storage::disk('local')->exists($originalPath))->toBeTrue();
-    Queue::assertPushed(
-        UploadGoogleDriveDocument::class,
-        fn (UploadGoogleDriveDocument $job): bool => $job->documentId === $document->id,
-    );
-
-    $this->app->make(PemberkasanDocumentService::class)->uploadStoredDocument($document->id);
+        ->and($document->replacement_local_path)->toBeNull()
+        ->and(Storage::disk('local')->exists($originalPath))->toBeFalse();
 
     $this->assertDatabaseHas('pemberkasan_documents', [
         'id' => $document->id,

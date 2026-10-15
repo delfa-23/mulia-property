@@ -27,4 +27,10 @@ class Sales extends Model
     {
         return $this->hasMany(Booking::class);
     }
+
+    /** @return HasMany<MarketingLead, $this> */
+    public function marketingLeads(): HasMany
+    {
+        return $this->hasMany(MarketingLead::class);
+    }
 }

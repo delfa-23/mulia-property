@@ -62,6 +62,17 @@
                             Dashboard Pembangunan
                         </flux:sidebar.item>
 
+                        @if(auth()->user()->role !== 'admin')
+                            <flux:sidebar.item
+                                icon="building-office-2"
+                                :href="route('pembangunan.properties.index')"
+                                :current="request()->routeIs('pembangunan.properties.*')"
+                                wire:navigate
+                            >
+                                Perumahan, Blok & Kavling
+                            </flux:sidebar.item>
+                        @endif
+
                         @if(auth()->user()->role === 'admin')
                             <flux:sidebar.item
                                 icon="building-office-2"
@@ -74,11 +85,11 @@
 
                             <flux:sidebar.item
                                 icon="building-office"
-                                :href="route('admin.construction-stages.index')"
-                                :current="request()->routeIs('admin.construction-stages.*')"
+                                :href="route('admin.property-construction-stages.index')"
+                                :current="request()->routeIs('admin.property-construction-stages.*')"
                                 wire:navigate
                             >
-                                Tahapan Pembangunan
+                                Tahapan per Perumahan
                             </flux:sidebar.item>
 
                             <flux:sidebar.item
@@ -89,43 +100,43 @@
                             >
                                 Fasilitas Umum
                             </flux:sidebar.item>
-                            @else
-                                <flux:sidebar.item
-                                    icon="building-office-2"
-                                    :href="route('pembangunan.properties.index')"
-                                    :current="request()->routeIs('pembangunan.properties.*')"
-                                    wire:navigate
-                                >
-                                    Perumahan, Block & Kavling
-                                </flux:sidebar.item>
 
-                                <flux:sidebar.item
-                                    icon="building-office"
-                                    :href="route('pembangunan.construction-stages.index')"
-                                    :current="request()->routeIs('pembangunan.construction-stages.*')"
-                                    wire:navigate
-                                >
-                                    Tahapan Pembangunan
-                                </flux:sidebar.item>
+                            <flux:sidebar.item
+                                icon="banknotes"
+                                :href="route('admin.budgets.index', ['purpose' => 'pembangunan'])"
+                                :current="request()->routeIs('admin.budgets.*') && request('purpose') === 'pembangunan'"
+                                wire:navigate
+                            >
+                                RAB Pembangunan
+                            </flux:sidebar.item>
                             @endif
 
                         <flux:sidebar.item
                             icon="chart-bar"
                             :href="route('pembangunan.progress.index')"
-                            :current="request()->routeIs('pembangunan.progress.*')"
+                            :current="request()->routeIs('pembangunan.progress.index', 'pembangunan.progress.show', 'pembangunan.progress.update')"
                             wire:navigate
                         >
                             Progress Kavling
                         </flux:sidebar.item>
 
+                        <flux:sidebar.item
+                            icon="chart-bar"
+                            :href="route('pembangunan.progress.facilities.index')"
+                            :current="request()->routeIs('pembangunan.progress.facilities.*')"
+                            wire:navigate
+                        >
+                            Progress Fasilitas Umum
+                        </flux:sidebar.item>
+
                         @if(auth()->user()->role !== 'admin')
                             <flux:sidebar.item
-                                icon="building-office"
-                                :href="route('pembangunan.common-facilities.index')"
-                                :current="request()->routeIs('pembangunan.common-facilities.*')"
+                                icon="banknotes"
+                                :href="route('finance.index')"
+                                :current="request()->routeIs('finance.*')"
                                 wire:navigate
                             >
-                                Fasilitas Umum
+                                Keuangan Pembangunan
                             </flux:sidebar.item>
                         @endif
 
@@ -148,6 +159,42 @@
                             Dashboard Marketing
                         </flux:sidebar.item>
 
+                        <flux:sidebar.item
+                            icon="user-plus"
+                            :href="route('marketing.leads.index')"
+                            :current="request()->routeIs('marketing.leads.*')"
+                            wire:navigate
+                        >
+                            Prospek
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item
+                            icon="phone"
+                            :href="route('marketing.follow-ups.index')"
+                            :current="request()->routeIs('marketing.follow-ups.*')"
+                            wire:navigate
+                        >
+                            Follow-up CRM
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item
+                            icon="calendar-days"
+                            :href="route('marketing.calendar')"
+                            :current="request()->routeIs('marketing.calendar')"
+                            wire:navigate
+                        >
+                            Kalender CRM
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item
+                            icon="chart-bar"
+                            :href="route('marketing.reports.crm')"
+                            :current="request()->routeIs('marketing.reports.crm')"
+                            wire:navigate
+                        >
+                            Laporan CRM
+                        </flux:sidebar.item>
+
                         @if(auth()->user()->role === 'admin' || auth()->user()->role === 'tl_marketing')
                             <flux:sidebar.item
                                 icon="user-group"
@@ -159,13 +206,24 @@
                             </flux:sidebar.item>
                         @endif
 
+                        @if(auth()->user()->role === 'admin')
+                            <flux:sidebar.item
+                                icon="banknotes"
+                                :href="route('admin.budgets.index', ['purpose' => 'marketing'])"
+                                :current="request()->routeIs('admin.budgets.*') && request('purpose') === 'marketing'"
+                                wire:navigate
+                            >
+                                RAB Marketing
+                            </flux:sidebar.item>
+                        @endif
+
                         <flux:sidebar.item
                             icon="banknotes"
                             :href="route('finance.index')"
                             :current="request()->routeIs('finance.*')"
                             wire:navigate
                         >
-                            Keuangan Marketing
+                            {{ auth()->user()->isAssignedToDivision('pembangunan') ? 'Keuangan Pembangunan' : 'Keuangan Marketing' }}
                         </flux:sidebar.item>
 
                         <flux:sidebar.item
@@ -197,6 +255,20 @@
 
                     </flux:sidebar.group>
 
+                @endif
+
+                {{-- MENU KEUANGAN --}}
+                @if(auth()->user()->role === 'admin' || in_array(auth()->user()->role, ['tl_keuangan', 'staff_keuangan']))
+                    <flux:sidebar.group :heading="__('Keuangan')" class="grid">
+                        <flux:sidebar.item
+                            icon="banknotes"
+                            :href="route('keuangan.cash-position.index')"
+                            :current="request()->routeIs('keuangan.*')"
+                            wire:navigate
+                        >
+                            Saldo Bank &amp; Rencana
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
                 @endif
 
 
@@ -234,6 +306,15 @@
                             Checklist Berkas
                         </flux:sidebar.item>
 
+                        <flux:sidebar.item
+                            icon="folder"
+                            :href="route('pemberkasan.other-documents.index')"
+                            :current="request()->routeIs('pemberkasan.other-documents.*')"
+                            wire:navigate
+                        >
+                            Berkas Lainnya
+                        </flux:sidebar.item>
+
                     </flux:sidebar.group>
 
                 @endif
@@ -257,6 +338,15 @@
                             wire:navigate
                         >
                             Kirim Alert
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item
+                            icon="inbox"
+                            :href="route('alerts.index')"
+                            :current="request()->routeIs('alerts.index')"
+                            wire:navigate
+                        >
+                            Inbox Alert
                         </flux:sidebar.item>
 
                         @if(auth()->user()->isAdmin())

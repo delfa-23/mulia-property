@@ -12,14 +12,22 @@ class Booking extends Model
 {
     use HasFactory;
 
+    public const DP_PERCENTAGE = 100.0;
+
     protected $fillable = [
         'lot_id',
         'customer_id',
         'sales_id',
+        'lead_id',
         'booking_date',
         'blocking_until',
+        'house_price_snapshot',
+        'dp_percentage',
+        'akad_fee',
         'status',
         'notes',
+        'applicant_work_location_url',
+        'spouse_work_location_url',
     ];
 
     protected function casts(): array
@@ -27,6 +35,9 @@ class Booking extends Model
         return [
             'booking_date' => 'date',
             'blocking_until' => 'datetime',
+            'house_price_snapshot' => 'decimal:2',
+            'dp_percentage' => 'decimal:2',
+            'akad_fee' => 'decimal:2',
         ];
     }
 
@@ -43,6 +54,12 @@ class Booking extends Model
     public function sales(): BelongsTo
     {
         return $this->belongsTo(Sales::class);
+    }
+
+    /** @return BelongsTo<MarketingLead, $this> */
+    public function marketingLead(): BelongsTo
+    {
+        return $this->belongsTo(MarketingLead::class, 'lead_id');
     }
 
     public function documentProcess(): HasOne
@@ -73,5 +90,10 @@ class Booking extends Model
     public function histories(): HasMany
     {
         return $this->hasMany(BookingHistory::class)->latest('changed_at');
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(BookingPayment::class)->latest('paid_at');
     }
 }

@@ -1,8 +1,8 @@
 <x-layouts::app :title="__('Activity Logs')">
-	<div class="space-y-6">
+	<div class="space-y-6" x-data x-init="setInterval(() => window.location.reload(), 15000)">
 		<div>
 			<h1 class="text-2xl font-semibold">Activity Logs</h1>
-			<p class="mt-1 text-sm text-zinc-500">Audit aktivitas penting pengguna dan modul.</p>
+			<p class="mt-1 text-sm text-zinc-500">Audit aktivitas penting pengguna dan modul. Data diperbarui otomatis setiap 15 detik.</p>
 		</div>
 
 		<form

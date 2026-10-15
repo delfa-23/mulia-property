@@ -8,84 +8,78 @@ use App\Models\Lot;
 use App\Models\Property;
 use App\Models\User;
 
-function createPropertyManagementUser(string $role = 'staff_pembangunan'): User
+function createPropertyManagementUser(string $role = 'admin'): User
 {
-    $division = Division::firstOrCreate(
-        ['slug' => 'pembangunan'],
-        ['name' => 'Pembangunan', 'is_active' => true]
-    );
-
     return User::factory()->create([
         'role' => $role,
-        'division_id' => $division->id,
     ]);
 }
 
-test('pembangunan staff can manage properties blocks and lots', function () {
+test('admin can manage properties blocks and lots', function () {
     $user = createPropertyManagementUser();
 
     $this->actingAs($user)
-        ->get(route('pembangunan.properties.index'))
+        ->get(route('admin.properties.index'))
         ->assertOk()
         ->assertSee('Perumahan, Block & Kavling');
-    $this->get(route('pembangunan.properties.create'))
+    $this->get(route('admin.properties.create'))
         ->assertOk();
 
-    $this->post(route('pembangunan.properties.store'), [
+    $this->post(route('admin.properties.store'), [
         'name' => 'Perumahan Baru',
         'address' => 'Jl. Contoh',
         'description' => 'Deskripsi',
-    ])->assertRedirect(route('pembangunan.properties.index'));
+    ])->assertRedirect(route('admin.properties.index'));
 
     $property = Property::query()->where('name', 'Perumahan Baru')->firstOrFail();
     $this->assertModelExists($property);
 
-    $this->get(route('pembangunan.properties.edit', $property))
+    $this->get(route('admin.properties.edit', $property))
         ->assertSee('value="Perumahan Baru"', false)
         ->assertSee('value="Jl. Contoh"', false)
         ->assertSee('>Deskripsi</textarea>', false);
-    $this->put(route('pembangunan.properties.update', $property), [
+    $this->put(route('admin.properties.update', $property), [
         'name' => 'Perumahan Diperbarui',
         'address' => 'Jl. Baru',
         'description' => 'Deskripsi baru',
-    ])->assertRedirect(route('pembangunan.properties.index'));
+    ])->assertRedirect(route('admin.properties.index'));
     $this->assertDatabaseHas('properties', [
         'id' => $property->id,
         'name' => 'Perumahan Diperbarui',
         'address' => 'Jl. Baru',
     ]);
 
-    $this->get(route('pembangunan.properties.blocks.create', $property))
+    $this->get(route('admin.properties.blocks.create', $property))
         ->assertOk();
-    $this->post(route('pembangunan.properties.blocks.store', $property), [
+    $this->post(route('admin.properties.blocks.store', $property), [
         'name' => 'A',
         'description' => 'Block pertama',
-    ])->assertRedirect(route('pembangunan.properties.blocks.index', $property));
+    ])->assertRedirect(route('admin.properties.blocks.index', $property));
 
     $block = Block::query()->where('property_id', $property->id)->firstOrFail();
 
-    $this->get(route('pembangunan.properties.blocks.edit', [$property, $block]))
+    $this->get(route('admin.properties.blocks.edit', [$property, $block]))
         ->assertSee('value="A"', false)
         ->assertSee('>Block pertama</textarea>', false);
-    $this->put(route('pembangunan.properties.blocks.update', [$property, $block]), [
+    $this->put(route('admin.properties.blocks.update', [$property, $block]), [
         'name' => 'B',
         'description' => 'Block diperbarui',
-    ])->assertRedirect(route('pembangunan.properties.blocks.index', $property));
+    ])->assertRedirect(route('admin.properties.blocks.index', $property));
     $this->assertDatabaseHas('blocks', [
         'id' => $block->id,
         'name' => 'B',
     ]);
 
-    $this->get(route('pembangunan.properties.blocks.lots.create', [$property, $block]))
+    $this->get(route('admin.properties.blocks.lots.create', [$property, $block]))
         ->assertSee('B-', false)
         ->assertSee('name="lot_number"', false)
         ->assertSee('placeholder="01"', false);
-    $this->post(route('pembangunan.properties.blocks.lots.store', [$property, $block]), [
+    $this->post(route('admin.properties.blocks.lots.store', [$property, $block]), [
         'lot_number' => '01',
         'house_price' => 350000000,
         'status' => 'available',
         'notes' => 'Kavling pertama',
-    ])->assertRedirect(route('pembangunan.properties.blocks.lots.index', [$property, $block]));
+    ])->assertRedirect(route('admin.properties.blocks.lots.index', [$property, $block]));
 
     $lot = Lot::query()->where('block_id', $block->id)->firstOrFail();
     $this->assertDatabaseHas('lots', [
@@ -93,37 +87,37 @@ test('pembangunan staff can manage properties blocks and lots', function () {
         'lot_number' => 'B-01',
     ]);
 
-    $this->get(route('pembangunan.properties.blocks.lots.edit', [$property, $block, $lot]))
+    $this->get(route('admin.properties.blocks.lots.edit', [$property, $block, $lot]))
         ->assertSee('B-', false)
         ->assertSee('value="01"', false)
         ->assertSee('value="350000000.00"', false)
         ->assertSee('value="available" selected', false)
         ->assertSee('>Kavling pertama</textarea>', false);
-    $this->put(route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot]), [
+    $this->put(route('admin.properties.blocks.lots.update', [$property, $block, $lot]), [
         'lot_number' => '02',
         'house_price' => 400000000,
         'status' => 'available',
         'notes' => 'Kavling diperbarui',
-    ])->assertRedirect(route('pembangunan.properties.blocks.lots.index', [$property, $block]));
+    ])->assertRedirect(route('admin.properties.blocks.lots.index', [$property, $block]));
     $this->assertDatabaseHas('lots', [
         'id' => $lot->id,
         'lot_number' => 'B-02',
         'house_price' => 400000000,
     ]);
 
-    $this->delete(route('pembangunan.properties.blocks.lots.destroy', [$property, $block, $lot]))
-        ->assertRedirect(route('pembangunan.properties.blocks.lots.index', [$property, $block]));
-    $this->delete(route('pembangunan.properties.blocks.destroy', [$property, $block]))
-        ->assertRedirect(route('pembangunan.properties.blocks.index', $property));
-    $this->delete(route('pembangunan.properties.destroy', $property))
-        ->assertRedirect(route('pembangunan.properties.index'));
+    $this->delete(route('admin.properties.blocks.lots.destroy', [$property, $block, $lot]))
+        ->assertRedirect(route('admin.properties.blocks.lots.index', [$property, $block]));
+    $this->delete(route('admin.properties.blocks.destroy', [$property, $block]))
+        ->assertRedirect(route('admin.properties.blocks.index', $property));
+    $this->delete(route('admin.properties.destroy', $property))
+        ->assertRedirect(route('admin.properties.index'));
 
     $this->assertDatabaseMissing('properties', ['id' => $property->id]);
     $this->assertDatabaseMissing('blocks', ['id' => $block->id]);
     $this->assertDatabaseMissing('lots', ['id' => $lot->id]);
 });
 
-test('pembangunan staff saves house prices entered with Indonesian separators', function (string $housePrice) {
+test('admin saves house prices entered with Indonesian separators', function (string $housePrice) {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Harga']);
     $block = Block::create([
@@ -138,12 +132,12 @@ test('pembangunan staff saves house prices entered with Indonesian separators', 
     ]);
 
     $this->actingAs($user)
-        ->put(route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot]), [
+        ->put(route('admin.properties.blocks.lots.update', [$property, $block, $lot]), [
             'lot_number' => 'A-01',
             'house_price' => $housePrice,
             'status' => 'available',
         ])
-        ->assertRedirect(route('pembangunan.properties.blocks.lots.index', [$property, $block]));
+        ->assertRedirect(route('admin.properties.blocks.lots.index', [$property, $block]));
 
     $this->assertDatabaseHas('lots', [
         'id' => $lot->id,
@@ -154,13 +148,13 @@ test('pembangunan staff saves house prices entered with Indonesian separators', 
     'currency-prefixed grouped amount' => 'Rp 4.000.000.000',
 ]);
 
-test('pembangunan staff can add construction stages scoped to each property', function () {
+test('admin can add construction stages scoped to each property', function () {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Tahap Satu']);
     $otherProperty = Property::create(['name' => 'Perumahan Tahap Dua']);
 
     $this->actingAs($user)
-        ->post(route('pembangunan.properties.construction-stages.store', $property), [
+        ->post(route('admin.property-construction-stages.store', $property), [
             'name' => 'Pondasi Tahap Satu',
             'order' => 1,
             'min_progress' => 1,
@@ -169,7 +163,7 @@ test('pembangunan staff can add construction stages scoped to each property', fu
         ])
         ->assertRedirect()
         ->assertSessionHas('success');
-    $this->post(route('pembangunan.properties.construction-stages.store', $otherProperty), [
+    $this->post(route('admin.property-construction-stages.store', $otherProperty), [
         'name' => 'Pondasi Tahap Dua',
         'order' => 1,
         'min_progress' => 1,
@@ -187,7 +181,7 @@ test('pembangunan staff can add construction stages scoped to each property', fu
     ]);
 });
 
-test('pembangunan staff cannot add overlapping progress ranges for one property', function () {
+test('admin cannot add overlapping progress ranges for one property', function () {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Range']);
     $property->constructionStages()->create([
@@ -198,14 +192,14 @@ test('pembangunan staff cannot add overlapping progress ranges for one property'
     ]);
 
     $this->actingAs($user)
-        ->from(route('pembangunan.properties.index'))
-        ->post(route('pembangunan.properties.construction-stages.store', $property), [
+        ->from(route('admin.properties.index'))
+        ->post(route('admin.property-construction-stages.store', $property), [
             'name' => 'Pekerjaan Berikutnya',
             'order' => 2,
             'min_progress' => 15,
             'max_progress' => 30,
         ])
-        ->assertRedirect(route('pembangunan.properties.index'))
+        ->assertRedirect(route('admin.properties.index'))
         ->assertSessionHasErrors('min_progress');
 
     $this->assertDatabaseMissing('construction_stages', [
@@ -241,7 +235,7 @@ test('deleting a property construction stage removes its lot progress', function
     ]);
 
     $this->actingAs($user)
-        ->delete(route('pembangunan.properties.construction-stages.destroy', [$property, $stage]))
+        ->delete(route('admin.property-construction-stages.destroy', [$property, $stage]))
         ->assertRedirect()
         ->assertSessionHas('success');
 
@@ -249,7 +243,7 @@ test('deleting a property construction stage removes its lot progress', function
     $this->assertDatabaseMissing('construction_progress', ['id' => $progress->id]);
 });
 
-test('users outside pembangunan cannot access property management', function () {
+test('marketing users cannot access admin property management', function () {
     $division = Division::firstOrCreate(
         ['slug' => 'marketing'],
         ['name' => 'Marketing', 'is_active' => true]
@@ -260,19 +254,19 @@ test('users outside pembangunan cannot access property management', function () 
     ]);
 
     $this->actingAs($user)
-        ->get(route('pembangunan.properties.index'))
+        ->get(route('admin.properties.index'))
         ->assertForbidden();
 });
 
-test('pembangunan team leads can access property management', function () {
+test('pembangunan team leads cannot access admin property management', function () {
     $user = createPropertyManagementUser('tl_pembangunan');
 
     $this->actingAs($user)
-        ->get(route('pembangunan.properties.index'))
-        ->assertOk();
+        ->get(route('admin.properties.index'))
+        ->assertForbidden();
 });
 
-test('pembangunan sidebar opens the construction stages management page', function () {
+test('admin sidebar opens property construction stage management', function () {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Tahapan']);
     $property->constructionStages()->create([
@@ -283,12 +277,12 @@ test('pembangunan sidebar opens the construction stages management page', functi
     ]);
 
     $this->actingAs($user)
-        ->get(route('pembangunan.construction-stages.index'))
+        ->get(route('admin.property-construction-stages.index'))
         ->assertOk()
         ->assertSee('Tahapan Pembangunan')
         ->assertSee('Perumahan Tahapan')
         ->assertSee('Pekerjaan Pondasi')
-        ->assertSee(route('pembangunan.construction-stages.index'));
+        ->assertSee(route('admin.property-construction-stages.index'));
 });
 
 test('nested property routes reject blocks and lots from other properties', function () {
@@ -307,11 +301,11 @@ test('nested property routes reject blocks and lots from other properties', func
     ]);
 
     $this->actingAs($user)
-        ->get(route('pembangunan.properties.blocks.lots.index', [$property, $block]))
+        ->get(route('admin.properties.blocks.lots.index', [$property, $block]))
         ->assertNotFound();
-    $this->get(route('pembangunan.properties.blocks.lots.edit', [$otherProperty, $block, $lot]))
+    $this->get(route('admin.properties.blocks.lots.edit', [$otherProperty, $block, $lot]))
         ->assertOk();
-    $this->get(route('pembangunan.properties.blocks.lots.edit', [$property, $block, $lot]))
+    $this->get(route('admin.properties.blocks.lots.edit', [$property, $block, $lot]))
         ->assertNotFound();
 });
 
@@ -342,14 +336,14 @@ test('deleting a property hierarchy with progress data is refused', function () 
     ]);
 
     $this->actingAs($user)
-        ->delete(route('pembangunan.properties.destroy', $property))
-        ->assertRedirect(route('pembangunan.properties.index'))
+        ->delete(route('admin.properties.destroy', $property))
+        ->assertRedirect(route('admin.properties.index'))
         ->assertSessionHas('error');
-    $this->delete(route('pembangunan.properties.blocks.destroy', [$property, $block]))
-        ->assertRedirect(route('pembangunan.properties.blocks.index', $property))
+    $this->delete(route('admin.properties.blocks.destroy', [$property, $block]))
+        ->assertRedirect(route('admin.properties.blocks.index', $property))
         ->assertSessionHas('error');
-    $this->delete(route('pembangunan.properties.blocks.lots.destroy', [$property, $block, $lot]))
-        ->assertRedirect(route('pembangunan.properties.blocks.lots.index', [$property, $block]))
+    $this->delete(route('admin.properties.blocks.lots.destroy', [$property, $block, $lot]))
+        ->assertRedirect(route('admin.properties.blocks.lots.index', [$property, $block]))
         ->assertSessionHas('error');
 
     $this->assertModelExists($property);

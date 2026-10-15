@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -73,6 +74,18 @@ class User extends Authenticatable implements PasskeyUser
     public function division(): BelongsTo
     {
         return $this->belongsTo(Division::class);
+    }
+
+    /** @return HasMany<MarketingLead, $this> */
+    public function assignedMarketingLeads(): HasMany
+    {
+        return $this->hasMany(MarketingLead::class, 'assigned_user_id');
+    }
+
+    /** @return HasMany<MarketingLeadFollowUp, $this> */
+    public function assignedMarketingFollowUps(): HasMany
+    {
+        return $this->hasMany(MarketingLeadFollowUp::class, 'assigned_user_id');
     }
 
     public function documentProcesses()
@@ -141,6 +154,7 @@ class User extends Authenticatable implements PasskeyUser
             'tl_pembangunan', 'staff_pembangunan' => 'pembangunan',
             'tl_marketing', 'staff_marketing' => 'marketing',
             'tl_pemberkasan', 'staff_pemberkasan' => 'pemberkasan',
+            'tl_keuangan', 'staff_keuangan' => 'keuangan',
             default => null,
         };
     }
@@ -166,6 +180,7 @@ class User extends Authenticatable implements PasskeyUser
             'tl_marketing' => 'marketing.dashboard',
             'staff_marketing' => 'marketing.dashboard',
             'tl_pemberkasan', 'staff_pemberkasan' => 'pemberkasan.dashboard',
+            'tl_keuangan', 'staff_keuangan' => 'keuangan.cash-position.index',
             default => 'dashboard',
         };
     }

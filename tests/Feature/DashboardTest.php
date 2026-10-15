@@ -52,7 +52,7 @@ test('admin sidebar only shows the admin common facilities link', function () {
     $response = $this->actingAs($admin)->get(route('admin.dashboard'));
 
     $response->assertSee(route('admin.common-facilities.index'), false)
-        ->assertDontSee(route('pembangunan.common-facilities.index'), false);
+        ->assertDontSee('/pembangunan/common-facilities', false);
 });
 
 test('admin sidebar shows progress report under each division', function () {
@@ -61,6 +61,40 @@ test('admin sidebar shows progress report under each division', function () {
     $response = $this->actingAs($admin)->get(route('admin.dashboard'));
 
     expect(substr_count($response->getContent(), 'Progress Report'))->toBe(3);
+});
+
+test('admin sidebar places separate RAB links in their divisions', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+
+    $response = $this->actingAs($admin)->get(route('admin.dashboard'));
+    $content = $response->getContent();
+
+    $constructionRab = route('admin.budgets.index', ['purpose' => 'pembangunan']);
+    $marketingRab = route('admin.budgets.index', ['purpose' => 'marketing']);
+
+    $response->assertSee('RAB Pembangunan')
+        ->assertSee($constructionRab, false)
+        ->assertSee('RAB Marketing')
+        ->assertSee($marketingRab, false)
+        ->assertDontSee('href="'.route('admin.budgets.index').'"', false);
+
+    expect(strpos($content, 'Pembangunan'))
+        ->toBeLessThan(strpos($content, $constructionRab))
+        ->and(strpos($content, 'Marketing &amp; Keuangan'))
+        ->toBeLessThan(strpos($content, $marketingRab));
+});
+
+test('non-admin users do not see admin RAB management links in the sidebar', function () {
+    $marketingUser = User::factory()->create([
+        'role' => 'staff_marketing',
+    ]);
+
+    $response = $this->actingAs($marketingUser)->get(route('marketing.dashboard'));
+
+    $response->assertDontSee('RAB Pembangunan')
+        ->assertDontSee('RAB Marketing')
+        ->assertDontSee(route('admin.budgets.index', ['purpose' => 'pembangunan']), false)
+        ->assertDontSee(route('admin.budgets.index', ['purpose' => 'marketing']), false);
 });
 
 test('admin dashboard filters property block and lot statistics', function () {
@@ -411,6 +445,7 @@ test('marketing dashboard filters property data and shows block with lot number'
     ]);
     ExpenseTransaction::create([
         'property_id' => $property->id,
+        'division' => 'marketing',
         'transaction_number' => 'EXP-MARKETING-01',
         'transaction_date' => '2026-09-30',
         'category' => 'Material',
@@ -418,32 +453,39 @@ test('marketing dashboard filters property data and shows block with lot number'
     ]);
     ExpenseTransaction::create([
         'property_id' => $otherProperty->id,
+        'division' => 'marketing',
         'transaction_number' => 'EXP-MARKETING-02',
         'transaction_date' => '2026-09-30',
         'category' => 'Material',
         'amount' => 7000000,
     ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-CONSTRUCTION-01',
+        'transaction_date' => '2026-09-30',
+        'category' => 'Biaya Pembangunan',
+        'amount' => 9000000,
+    ]);
 
     $response = $this->actingAs($marketingUser)
         ->get(route('marketing.dashboard', ['property_id' => $property->id]));
 
-    $response->assertSee('Total RAB')
+    $response->assertSee('Total Harga Kavling')
         ->assertSee('Total Pengeluaran')
-        ->assertSee('Deviasi RAB')
+        ->assertDontSee('Total RAB')
+        ->assertDontSee('Deviasi RAB')
         ->assertDontSee('Total Pemasukan')
         ->assertDontSee('Saldo Bersih')
-        ->assertSee('Rp 5.000.000')
+        ->assertSee('Rp 500.000.000')
         ->assertSee('Rp 3.000.000')
-        ->assertSee('Rp 2.000.000')
+        ->assertDontSee('Biaya Pembangunan')
         ->assertSee('Pembeli Terpilih')
         ->assertDontSee('Pembeli Lain')
         ->assertSee('A/01')
         ->assertDontSee('B/02')
-        ->assertViewHas('financialStats', fn (array $financialStats): bool => (float) $financialStats['total_budget'] === 5000000.0
-            && (float) $financialStats['total_income'] === 12000000.0
-            && (float) $financialStats['total_expense'] === 3000000.0
-            && (float) $financialStats['deviation'] === 2000000.0
-            && (float) $financialStats['balance'] === 9000000.0)
+        ->assertViewHas('financialStats', fn (array $financialStats): bool => (float) $financialStats['total_house_price'] === 500000000.0
+            && (float) $financialStats['total_expense'] === 3000000.0)
         ->assertViewHas('stats', fn (array $stats): bool => $stats['total_customers'] === 1
             && $stats['active_bookings'] === 1
             && $stats['booked_lots'] === 1)

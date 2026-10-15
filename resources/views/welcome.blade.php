@@ -6,7 +6,7 @@
 
         <title>{{ __('Welcome') }} - {{ config('app.name', 'Laravel') }}</title>
 
-        <link rel="icon" href="{{ asset('images/mulia-property-logo.png') }}" type="image/png">
+        <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/mulia-property-favicon.png') }}">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts

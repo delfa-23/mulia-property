@@ -15,7 +15,7 @@ class BlockController extends Controller
         Request $request,
         Property $property
     ): View {
-        $routePrefix = $this->routePrefix();
+        $routePrefix = 'admin.properties';
         $blocks = $property->blocks()
             ->withCount('lots')
             ->when($request->filled('block_id'), function ($query) use ($request) {
@@ -46,7 +46,7 @@ class BlockController extends Controller
     {
         return view('admin.blocks.create', [
             'property' => $property,
-            'routePrefix' => $this->routePrefix(),
+            'routePrefix' => 'admin.properties',
         ]);
     }
 
@@ -67,7 +67,7 @@ class BlockController extends Controller
         $property->blocks()->create($validated);
 
         return redirect()
-            ->route($this->routePrefix().'.blocks.index', $property)
+            ->route('admin.properties.blocks.index', $property)
             ->with('success', 'Block berhasil dibuat.');
     }
 
@@ -83,7 +83,7 @@ class BlockController extends Controller
         return view('admin.blocks.edit', [
             'property' => $property,
             'block' => $block,
-            'routePrefix' => $this->routePrefix(),
+            'routePrefix' => 'admin.properties',
         ]);
     }
 
@@ -110,7 +110,7 @@ class BlockController extends Controller
         $block->update($validated);
 
         return redirect()
-            ->route($this->routePrefix().'.blocks.index', $property)
+            ->route('admin.properties.blocks.index', $property)
             ->with('success', 'Block berhasil diperbarui.');
     }
 
@@ -125,21 +125,14 @@ class BlockController extends Controller
 
         if ($block->lots()->exists()) {
             return redirect()
-                ->route($this->routePrefix().'.blocks.index', $property)
+                ->route('admin.properties.blocks.index', $property)
                 ->with('error', 'Block tidak dapat dihapus karena masih memiliki kavling.');
         }
 
         $block->delete();
 
         return redirect()
-            ->route($this->routePrefix().'.blocks.index', $property)
+            ->route('admin.properties.blocks.index', $property)
             ->with('success', 'Block berhasil dihapus.');
-    }
-
-    private function routePrefix(): string
-    {
-        return request()->routeIs('pembangunan.properties.*')
-            ? 'pembangunan.properties'
-            : 'admin.properties';
     }
 }

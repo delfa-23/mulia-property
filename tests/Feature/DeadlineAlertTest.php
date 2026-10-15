@@ -107,3 +107,77 @@ test('booking pages alert on expired active blocking and akad deadlines only', f
     $pemberkasanDetailResponse->assertSee('Jadwal akad untuk Customer Akad Terlewati terlewati')
         ->assertDontSee('Jadwal akad untuk Customer Akad Selesai terlewati');
 });
+
+test('expired bookings are cancelled automatically and their lots are released', function () {
+    $this->travelTo(Carbon::parse('2026-10-06 12:00:00'));
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $marketingUser = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Auto Cancel']);
+    $block = Block::create([
+        'property_id' => $property->id,
+        'name' => 'A',
+    ]);
+    $expiredLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $activeLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '02',
+        'house_price' => 350000000,
+        'status' => 'process',
+    ]);
+    $expiredBooking = Booking::create([
+        'lot_id' => $expiredLot->id,
+        'customer_id' => Customer::create(['name' => 'Pembeli Expired'])->id,
+        'booking_date' => '2026-10-01',
+        'blocking_until' => '2026-10-05 12:00:00',
+        'status' => 'booking',
+    ]);
+    $activeBooking = Booking::create([
+        'lot_id' => $activeLot->id,
+        'customer_id' => Customer::create(['name' => 'Pembeli Process'])->id,
+        'booking_date' => '2026-10-01',
+        'blocking_until' => '2026-10-05 12:00:00',
+        'status' => 'process',
+    ]);
+
+    $this->artisan('bookings:expire')
+        ->expectsOutput('1 booking expired.')
+        ->assertSuccessful();
+
+    $this->assertDatabaseHas('bookings', ['id' => $expiredBooking->id, 'status' => 'cancelled']);
+    $this->assertDatabaseHas('lots', ['id' => $expiredLot->id, 'status' => 'available']);
+    $this->assertDatabaseHas('bookings', ['id' => $activeBooking->id, 'status' => 'process']);
+    $this->assertDatabaseHas('lots', ['id' => $activeLot->id, 'status' => 'process']);
+    $this->assertDatabaseHas('booking_histories', [
+        'booking_id' => $expiredBooking->id,
+        'from_status' => 'booking',
+        'to_status' => 'cancelled',
+    ]);
+    $this->assertDatabaseHas('alerts', [
+        'lot_id' => $expiredLot->id,
+        'type' => 'booking_expired',
+    ]);
+    $this->assertDatabaseHas('activity_logs', [
+        'action' => 'booking.auto_cancelled',
+        'subject_type' => Booking::class,
+        'subject_id' => $expiredBooking->id,
+    ]);
+
+    $this->actingAs($marketingUser)
+        ->get(route('marketing.bookings.index'))
+        ->assertSee('Booking otomatis dibatalkan karena batas booking terlewati');
+
+    $this->get(route('marketing.bookings.show', $expiredBooking))
+        ->assertSee('Booking otomatis dibatalkan karena batas booking terlewati');
+});
