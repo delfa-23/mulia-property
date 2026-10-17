@@ -143,11 +143,273 @@ const initializeLotFilters = () => {
 	document.querySelectorAll('form').forEach((form) => initializeBudgetTargetSelectors(form));
 };
 
+const initializeSitePlanViewers = () => {
+	document.querySelectorAll('[data-site-plan-viewer]:not([data-site-plan-initialized])').forEach((viewer) => {
+		viewer.dataset.sitePlanInitialized = 'true';
+
+		const lotButtons = Array.from(viewer.querySelectorAll('[data-site-plan-lot]'));
+		const emptyState = viewer.querySelector('[data-site-plan-empty]');
+		const detail = viewer.querySelector('[data-site-plan-detail]');
+		const label = viewer.querySelector('[data-site-plan-lot-label]');
+		const status = viewer.querySelector('[data-site-plan-lot-status]');
+		const price = viewer.querySelector('[data-site-plan-lot-price]');
+		const notes = viewer.querySelector('[data-site-plan-lot-notes]');
+		const notesSection = viewer.querySelector('[data-site-plan-notes-section]');
+
+		const selectLot = (lotButton) => {
+			lotButtons.forEach((button) => {
+				const isSelected = button === lotButton;
+				button.setAttribute('aria-pressed', String(isSelected));
+				button.style.outline = isSelected ? '3px solid white' : '';
+				button.style.boxShadow = isSelected ? '0 0 0 5px #10233d' : '';
+				button.style.zIndex = isSelected ? '30' : '';
+			});
+
+			if (emptyState) {
+				emptyState.hidden = true;
+			}
+
+			if (detail) {
+				detail.hidden = false;
+			}
+
+			if (label) {
+				label.textContent = lotButton.dataset.lotLabel ?? '';
+			}
+
+			if (status) {
+				status.textContent = lotButton.dataset.lotStatus ?? '';
+				status.style.backgroundColor = `${lotButton.dataset.lotColor}26`;
+				status.style.color = lotButton.dataset.lotColor ?? '';
+			}
+
+			if (price) {
+				const amount = Number(lotButton.dataset.lotPrice ?? 0);
+				price.textContent = new Intl.NumberFormat('id-ID', {
+					style: 'currency',
+					currency: 'IDR',
+					maximumFractionDigits: 0,
+				}).format(amount);
+			}
+
+			if (notes) {
+				notes.textContent = lotButton.dataset.lotNotes ?? '';
+				notesSection.hidden = ! notes.textContent.trim();
+			}
+		};
+
+		lotButtons.forEach((button) => {
+			button.addEventListener('click', () => {
+				const url = new URL(viewer.dataset.dashboardUrl, window.location.origin);
+				const selectedFilters = new URLSearchParams(window.location.search);
+				const sameLotIsFiltered = selectedFilters.get('property_id') === viewer.dataset.propertyId
+					&& selectedFilters.get('lot_id') === button.dataset.lotId;
+
+				if (sameLotIsFiltered) {
+					selectLot(button);
+
+					return;
+				}
+
+				url.searchParams.set('property_id', viewer.dataset.propertyId);
+				url.searchParams.set('lot_id', button.dataset.lotId);
+				window.location.assign(url);
+			});
+		});
+
+		const selectedLot = lotButtons.find((button) => button.getAttribute('aria-pressed') === 'true');
+
+		if (selectedLot) {
+			selectLot(selectedLot);
+		}
+	});
+};
+
+const initializeSitePlanEditors = () => {
+	document.querySelectorAll('[data-site-plan-editor]:not([data-site-plan-initialized])').forEach((form) => {
+		form.dataset.sitePlanInitialized = 'true';
+
+		const lotSelect = form.querySelector('[data-site-plan-lot-select]');
+		const canvas = form.querySelector('[data-site-plan-canvas]');
+		const draft = form.querySelector('[data-site-plan-draft]');
+		const drawStatus = form.querySelector('[data-site-plan-draw-status]');
+		const confirmDialog = form.querySelector('[data-site-plan-confirm]');
+		const confirmLotLabel = form.querySelector('[data-site-plan-confirm-lot]');
+		const confirmCancel = form.querySelector('[data-site-plan-confirm-cancel]');
+		const confirmAccept = form.querySelector('[data-site-plan-confirm-accept]');
+		const coordinateInputs = Object.fromEntries(
+			Array.from(form.querySelectorAll('[data-site-plan-coordinate]'))
+				.map((input) => [input.dataset.sitePlanCoordinate, input]),
+		);
+		let startPoint = null;
+		let activePointerId = null;
+		let hasArea = false;
+		let overwriteConfirmed = false;
+
+		if (! lotSelect || ! canvas || ! draft) {
+			return;
+		}
+
+		const currentOption = () => lotSelect.selectedOptions[0];
+		const updateFormAction = () => {
+			const option = currentOption();
+
+			if (option?.dataset.url) {
+				form.action = option.dataset.url;
+			}
+		};
+		const setCoordinates = (area) => {
+			Object.entries(area).forEach(([key, value]) => {
+				if (coordinateInputs[key]) {
+					coordinateInputs[key].value = Number(value).toFixed(2);
+				}
+			});
+		};
+		const showArea = (area) => {
+			draft.hidden = false;
+			draft.style.left = `${area.x}%`;
+			draft.style.top = `${area.y}%`;
+			draft.style.width = `${area.width}%`;
+			draft.style.height = `${area.height}%`;
+			hasArea = true;
+		};
+		const loadSelectedArea = () => {
+			const option = currentOption();
+			const area = {
+				x: option?.dataset.x,
+				y: option?.dataset.y,
+				width: option?.dataset.width,
+				height: option?.dataset.height,
+			};
+
+			updateFormAction();
+
+			if (Object.values(area).every((value) => value !== undefined && value !== '')) {
+				setCoordinates(area);
+				showArea(area);
+				drawStatus.textContent = 'Area kavling ini sudah ditandai. Tarik ulang untuk mengubah posisinya.';
+			} else {
+				Object.values(coordinateInputs).forEach((input) => {
+					input.value = '';
+				});
+				draft.hidden = true;
+				hasArea = false;
+				drawStatus.textContent = 'Tarik pada denah untuk memilih area kavling.';
+			}
+		};
+		const pointFromEvent = (event) => {
+			const bounds = canvas.getBoundingClientRect();
+
+			return {
+				x: Math.min(100, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * 100)),
+				y: Math.min(100, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * 100)),
+			};
+		};
+		const areaBetween = (first, second) => ({
+			x: Math.min(first.x, second.x),
+			y: Math.min(first.y, second.y),
+			width: Math.abs(second.x - first.x),
+			height: Math.abs(second.y - first.y),
+		});
+
+		lotSelect.addEventListener('change', loadSelectedArea);
+		loadSelectedArea();
+
+		canvas.addEventListener('pointerdown', (event) => {
+			if (event.button !== 0) {
+				return;
+			}
+
+			event.preventDefault();
+			startPoint = pointFromEvent(event);
+			activePointerId = event.pointerId;
+			canvas.setPointerCapture(event.pointerId);
+			showArea({ ...startPoint, width: 0, height: 0 });
+		});
+
+		canvas.addEventListener('pointermove', (event) => {
+			if (event.pointerId !== activePointerId || ! startPoint) {
+				return;
+			}
+
+			showArea(areaBetween(startPoint, pointFromEvent(event)));
+		});
+
+		canvas.addEventListener('pointerup', (event) => {
+			if (event.pointerId !== activePointerId || ! startPoint) {
+				return;
+			}
+
+			const area = areaBetween(startPoint, pointFromEvent(event));
+			startPoint = null;
+			activePointerId = null;
+
+			if (area.width < 0.15 || area.height < 0.15) {
+				loadSelectedArea();
+				drawStatus.textContent = 'Tarikan terlalu kecil. Tarik kembali untuk memilih area.';
+
+				return;
+			}
+
+			setCoordinates(area);
+			showArea(area);
+			drawStatus.textContent = 'Area siap disimpan.';
+		});
+
+		canvas.addEventListener('pointercancel', () => {
+			startPoint = null;
+			activePointerId = null;
+			loadSelectedArea();
+		});
+
+		confirmCancel?.addEventListener('click', () => confirmDialog.close());
+		confirmDialog?.addEventListener('click', (event) => {
+			if (event.target === confirmDialog) {
+				confirmDialog.close();
+			}
+		});
+		confirmAccept?.addEventListener('click', () => {
+			overwriteConfirmed = true;
+			confirmDialog.close();
+			form.requestSubmit();
+		});
+
+		form.addEventListener('submit', (event) => {
+			if (! hasArea) {
+				event.preventDefault();
+				drawStatus.textContent = 'Tandai area kavling pada gambar sebelum menyimpan.';
+
+				return;
+			}
+
+			if (overwriteConfirmed) {
+				overwriteConfirmed = false;
+
+				return;
+			}
+
+			const option = currentOption();
+			const alreadyMarked = ['x', 'y', 'width', 'height']
+				.every((key) => option?.dataset[key] !== undefined && option.dataset[key] !== '');
+
+			if (alreadyMarked && confirmDialog) {
+				event.preventDefault();
+				confirmLotLabel.textContent = option.textContent.trim();
+				confirmDialog.showModal();
+			}
+		});
+	});
+};
+
 initializeCurrencyInputs();
 initializeLotFilters();
+initializeSitePlanViewers();
+initializeSitePlanEditors();
 document.addEventListener('livewire:navigated', () => {
 	initializeCurrencyInputs();
 	initializeLotFilters();
+	initializeSitePlanViewers();
+	initializeSitePlanEditors();
 });
 document.addEventListener('input', (event) => {
 	if (event.target instanceof HTMLInputElement && event.target.matches('[data-currency-input]')) {

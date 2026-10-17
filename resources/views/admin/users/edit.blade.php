@@ -99,8 +99,8 @@
                                 'staff_marketing' => 'Staff Marketing',
                                 'tl_pemberkasan' => 'TL Pemberkasan',
                                 'staff_pemberkasan' => 'Staff Pemberkasan',
-                                'tl_keuangan' => 'TL Keuangan',
-                                'staff_keuangan' => 'Staff Keuangan',
+                                'tl_finance' => 'TL Finance',
+                                'staff_finance' => 'Staff Finance',
                             ];
                         @endphp
 
@@ -229,10 +229,10 @@
             }
 
             if (
-                role === 'tl_keuangan' ||
-                role === 'staff_keuangan'
+                role === 'tl_finance' ||
+                role === 'staff_finance'
             ) {
-                division = 'Keuangan';
+                division = 'Finance';
             }
 
             divisionInfo.textContent = division;

@@ -31,6 +31,7 @@
             <form
                 method="POST"
                 action="{{ route($routePrefix.'.store') }}"
+                enctype="multipart/form-data"
                 class="space-y-6"
             >
                 @csrf
@@ -89,6 +90,23 @@
                         placeholder="Informasi tambahan mengenai property..."
                         class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-blue-500 focus:ring-blue-500"
                     >{{ old('description') }}</textarea>
+                </div>
+
+                <div>
+                    <label for="site_plan" class="mb-2 block text-sm font-medium text-gray-700">
+                        Gambar Denah Perumahan
+                    </label>
+                    <input
+                        type="file"
+                        id="site_plan"
+                        name="site_plan"
+                        accept="image/jpeg,image/png,image/webp"
+                        class="block w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm"
+                    >
+                    <p class="mt-1 text-xs text-gray-500">JPG, PNG, atau WebP; maksimal 10 MB. Area kavling dapat ditandai setelah data blok dan kavling dibuat.</p>
+                    @error('site_plan')
+                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
                 </div>
 
                 {{-- Buttons --}}

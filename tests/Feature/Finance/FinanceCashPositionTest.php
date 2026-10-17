@@ -1,20 +1,20 @@
 <?php
 
 use App\Models\Division;
-use App\Models\MarketingCashAccount;
-use App\Models\MarketingCashFlow;
+use App\Models\FinanceCashAccount;
+use App\Models\FinanceCashFlow;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 
 test('finance staff can add any bank and record a plan in week four', function () {
     $this->travelTo(Carbon::parse('2026-10-12 09:00:00'));
     $division = Division::create([
-        'name' => 'Keuangan',
-        'slug' => 'keuangan',
+        'name' => 'Finance',
+        'slug' => 'finance',
         'is_active' => true,
     ]);
     $user = User::factory()->create([
-        'role' => 'staff_keuangan',
+        'role' => 'staff_finance',
         'division_id' => $division->id,
     ]);
 
@@ -28,7 +28,7 @@ test('finance staff can add any bank and record a plan in week four', function (
     ])
         ->assertRedirect(route('keuangan.cash-position.index'));
 
-    $account = MarketingCashAccount::query()->where('name', 'Bank Baru')->firstOrFail();
+    $account = FinanceCashAccount::query()->where('name', 'Bank Baru')->firstOrFail();
     expect($account->account_key)->toStartWith('finance-')
         ->and((float) $account->balance)->toBe(1250000.0);
 
@@ -42,13 +42,13 @@ test('finance staff can add any bank and record a plan in week four', function (
     ])
         ->assertRedirect(route('keuangan.cash-position.index'));
 
-    $this->assertDatabaseHas('marketing_cash_flows', [
+    $this->assertDatabaseHas('finance_cash_flows', [
         'title' => 'Pembayaran material',
         'direction' => 'outcome',
         'due_date' => '2026-11-03',
         'created_by' => $user->id,
     ]);
-    $cashFlow = MarketingCashFlow::query()->where('title', 'Pembayaran material')->firstOrFail();
+    $cashFlow = FinanceCashFlow::query()->where('title', 'Pembayaran material')->firstOrFail();
     expect((float) $cashFlow->amount)->toBe(5000000.0);
 
     $this->get(route('keuangan.cash-position.index'))
@@ -75,12 +75,12 @@ test('marketing users cannot access the finance cash position', function () {
 test('finance rejects a cash-flow date outside the selected week', function () {
     $this->travelTo(Carbon::parse('2026-10-12 09:00:00'));
     $division = Division::create([
-        'name' => 'Keuangan',
-        'slug' => 'keuangan',
+        'name' => 'Finance',
+        'slug' => 'finance',
         'is_active' => true,
     ]);
     $user = User::factory()->create([
-        'role' => 'tl_keuangan',
+        'role' => 'tl_finance',
         'division_id' => $division->id,
     ]);
 
@@ -95,7 +95,37 @@ test('finance rejects a cash-flow date outside the selected week', function () {
         ])
         ->assertSessionHasErrors('due_date');
 
-    $this->assertDatabaseMissing('marketing_cash_flows', [
+    $this->assertDatabaseMissing('finance_cash_flows', [
         'title' => 'Tanggal tidak sesuai',
     ]);
 });
+
+test('admin can create both finance roles with the finance division assignment', function (string $role) {
+    $financeDivision = Division::create([
+        'name' => 'Finance',
+        'slug' => 'finance',
+        'is_active' => true,
+    ]);
+    $admin = User::factory()->create(['role' => 'admin']);
+
+    $this->actingAs($admin)
+        ->get(route('admin.users.create'))
+        ->assertSee('TL Finance')
+        ->assertSee('Staff Finance');
+
+    $this->actingAs($admin)
+        ->post(route('admin.users.store'), [
+            'name' => 'Finance Test User',
+            'email' => "{$role}@example.test",
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => $role,
+        ])
+        ->assertRedirect(route('admin.users.index'));
+
+    $this->assertDatabaseHas('users', [
+        'email' => "{$role}@example.test",
+        'role' => $role,
+        'division_id' => $financeDivision->id,
+    ]);
+})->with(['tl_finance', 'staff_finance']);

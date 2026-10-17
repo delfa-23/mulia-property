@@ -16,8 +16,8 @@ test('alerts sent to a division are visible to that division and admin only', fu
         'is_active' => true,
     ]);
     $financeDivision = Division::create([
-        'name' => 'Keuangan',
-        'slug' => 'keuangan',
+        'name' => 'Finance',
+        'slug' => 'finance',
         'is_active' => true,
     ]);
     $marketingUser = User::factory()->create([
@@ -29,7 +29,7 @@ test('alerts sent to a division are visible to that division and admin only', fu
         'division_id' => $pemberkasanDivision->id,
     ]);
     $financeUser = User::factory()->create([
-        'role' => 'staff_keuangan',
+        'role' => 'staff_finance',
         'division_id' => $financeDivision->id,
     ]);
     $admin = User::factory()->create(['role' => 'admin']);
@@ -87,4 +87,44 @@ test('a division cannot target its own alert at itself', function () {
     $this->assertDatabaseMissing('alerts', [
         'title' => 'Alert tidak valid',
     ]);
+});
+
+test('finance can send an alert to another division and admin', function () {
+    $financeDivision = Division::create([
+        'name' => 'Finance',
+        'slug' => 'finance',
+        'is_active' => true,
+    ]);
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $financeUser = User::factory()->create([
+        'role' => 'staff_finance',
+        'division_id' => $financeDivision->id,
+    ]);
+    $marketingUser = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $admin = User::factory()->create(['role' => 'admin']);
+
+    $this->actingAs($financeUser)
+        ->post(route('alerts.store'), [
+            'type' => 'finance',
+            'title' => 'Pembayaran perlu ditindaklanjuti',
+            'message' => 'Mohon tindak lanjuti pembayaran ini.',
+            'severity' => 'high',
+            'recipient_division_ids' => [$marketingDivision->id],
+        ])
+        ->assertRedirect(route('alerts.create'));
+
+    $this->actingAs($marketingUser)
+        ->get(route('alerts.index'))
+        ->assertSee('Pembayaran perlu ditindaklanjuti');
+
+    $this->actingAs($admin)
+        ->get(route('admin.alerts.index'))
+        ->assertSee('Pembayaran perlu ditindaklanjuti');
 });

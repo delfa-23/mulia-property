@@ -58,7 +58,7 @@
                                 </td>
 
                                 <td class="px-5 py-4">
-                                    {{ ucwords(str_replace('_', ' ', $user->role)) }}
+                                    {{ ['tl_finance' => 'TL Finance', 'staff_finance' => 'Staff Finance'][$user->role] ?? ucwords(str_replace('_', ' ', $user->role)) }}
                                 </td>
 
                                 <td class="px-5 py-4">

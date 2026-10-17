@@ -154,7 +154,7 @@ class User extends Authenticatable implements PasskeyUser
             'tl_pembangunan', 'staff_pembangunan' => 'pembangunan',
             'tl_marketing', 'staff_marketing' => 'marketing',
             'tl_pemberkasan', 'staff_pemberkasan' => 'pemberkasan',
-            'tl_keuangan', 'staff_keuangan' => 'keuangan',
+            'tl_finance', 'staff_finance' => 'finance',
             default => null,
         };
     }
@@ -180,7 +180,7 @@ class User extends Authenticatable implements PasskeyUser
             'tl_marketing' => 'marketing.dashboard',
             'staff_marketing' => 'marketing.dashboard',
             'tl_pemberkasan', 'staff_pemberkasan' => 'pemberkasan.dashboard',
-            'tl_keuangan', 'staff_keuangan' => 'keuangan.cash-position.index',
+            'tl_finance', 'staff_finance' => 'keuangan.cash-position.index',
             default => 'dashboard',
         };
     }

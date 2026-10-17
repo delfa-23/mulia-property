@@ -18,12 +18,14 @@ class Lot extends Model
         'house_price',
         'status',
         'notes',
+        'map_coordinates',
     ];
 
     protected function casts(): array
     {
         return [
             'house_price' => 'decimal:2',
+            'map_coordinates' => 'array',
         ];
     }
 

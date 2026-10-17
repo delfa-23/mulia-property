@@ -26,5 +26,14 @@ class DivisionSeeder extends Seeder
             'slug' => 'pemberkasan',
             'description' => 'Divisi yang menangani proses berkas sampai akad.',
         ]);
+
+        Division::updateOrCreate(
+            ['slug' => 'finance'],
+            [
+                'name' => 'Finance',
+                'description' => 'Administrasi dan pengelolaan keuangan.',
+                'is_active' => true,
+            ]
+        );
     }
 }

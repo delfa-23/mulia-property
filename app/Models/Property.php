@@ -14,6 +14,7 @@ class Property extends Model
         'name',
         'address',
         'description',
+        'site_plan_path',
     ];
 
     public function blocks(): HasMany

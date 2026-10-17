@@ -42,6 +42,13 @@
             </div>
         </form>
 
+        <x-site-plan-map
+            :property="$selectedProperty"
+            :lots="$sitePlanLots"
+            :selected-lot-id="$lotId"
+            :manage-url="$selectedProperty ? route('admin.properties.edit', $selectedProperty) . ($selectedProperty->site_plan_path ? '#site-plan-editor' : '#site_plan') : null"
+            :dashboard-url="route('admin.dashboard')"
+        />
 
         {{-- MASTER DATA --}}
         <div>

@@ -249,3 +249,17 @@ textarea:focus[data-flux-control],
 select:focus[data-flux-control] {
     @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
 }
+
+.app-main :is(input[type='date'], input[type='datetime-local'], input[type='month']) {
+    padding-inline-end: 0.75rem;
+    color-scheme: light;
+}
+
+.app-main :is(input[type='date'], input[type='datetime-local'], input[type='month'])::-webkit-calendar-picker-indicator {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-inline-end: 0.25rem;
+    cursor: pointer;
+    opacity: 1;
+    filter: invert(28%) sepia(82%) saturate(2086%) hue-rotate(350deg) brightness(88%) contrast(92%);
+}

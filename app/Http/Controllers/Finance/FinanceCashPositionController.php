@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Http\Controllers\Controller;
-use App\Models\MarketingCashAccount;
-use App\Models\MarketingCashFlow;
+use App\Models\FinanceCashAccount;
+use App\Models\FinanceCashFlow;
 use App\Models\Property;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,6 +21,42 @@ class FinanceCashPositionController extends Controller
         $this->authorizeFinance($request);
 
         $today = today();
+        $currentMonth = $today->format('Y-m');
+        $historyMonthOptions = FinanceCashFlow::query()
+            ->select('due_date')
+            ->distinct()
+            ->orderBy('due_date')
+            ->pluck('due_date')
+            ->map(fn ($dueDate): string => Carbon::parse($dueDate)->format('Y-m'))
+            ->push($currentMonth)
+            ->unique()
+            ->sortDesc()
+            ->values();
+        $historyMonthLabels = $historyMonthOptions->mapWithKeys(fn (string $month): array => [
+            $month => Carbon::createFromFormat('!Y-m', $month)->locale('id')->translatedFormat('F Y'),
+        ]);
+        $validated = $request->validate([
+            'history_month' => ['nullable', 'date_format:Y-m', Rule::in($historyMonthOptions->all())],
+        ]);
+        $selectedHistoryMonth = $validated['history_month'] ?? $currentMonth;
+        $historyStart = Carbon::createFromFormat('!Y-m', $selectedHistoryMonth)->startOfMonth();
+        $historyEnd = $historyStart->copy()->endOfMonth();
+        $historyIsArchived = $historyStart->lt($today->copy()->startOfMonth());
+        $historyIsFuture = $historyStart->gt($today->copy()->startOfMonth());
+        $historyQuery = FinanceCashFlow::query()
+            ->whereBetween('due_date', [$historyStart->toDateString(), $historyEnd->toDateString()]);
+        $historySummary = (clone $historyQuery)
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN direction = 'income' THEN amount ELSE 0 END), 0) as income_total,
+                COALESCE(SUM(CASE WHEN direction = 'outcome' THEN amount ELSE 0 END), 0) as outcome_total
+            ")
+            ->first();
+        $cashFlowHistory = (clone $historyQuery)
+            ->with(['property', 'createdBy'])
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->paginate(15, ['*'], 'history_page')
+            ->withQueryString();
         $weekOptions = collect(range(1, 4))
             ->mapWithKeys(function (int $weekNumber) use ($today): array {
                 $start = $today->copy()->startOfWeek(Carbon::MONDAY)->addWeeks($weekNumber - 1);
@@ -38,7 +74,7 @@ class FinanceCashPositionController extends Controller
             'max' => $week['end'],
         ]);
         $endDate = $weekOptions->last()['end'];
-        $cashFlowPlans = MarketingCashFlow::query()
+        $cashFlowPlans = FinanceCashFlow::query()
             ->with(['property', 'createdBy'])
             ->whereBetween('due_date', [$today->toDateString(), $endDate])
             ->orderBy('due_date')
@@ -46,7 +82,7 @@ class FinanceCashPositionController extends Controller
             ->get();
         $cashFlowForecasts = $weekOptions->mapWithKeys(function (array $week, int $weekNumber) use ($cashFlowPlans): array {
             $plansInWeek = $cashFlowPlans->filter(
-                fn (MarketingCashFlow $plan): bool => $plan->due_date->between($week['min'], $week['end']),
+                fn (FinanceCashFlow $plan): bool => $plan->due_date->between($week['min'], $week['end']),
             );
             $totals = [];
 
@@ -67,9 +103,15 @@ class FinanceCashPositionController extends Controller
         });
 
         return view('keuangan.cash-position.index', [
-            'cashAccounts' => MarketingCashAccount::query()->orderBy('id')->get(),
+            'cashAccounts' => FinanceCashAccount::query()->orderBy('id')->get(),
             'cashFlowForecasts' => $cashFlowForecasts,
+            'cashFlowHistory' => $cashFlowHistory,
+            'historyIsArchived' => $historyIsArchived,
+            'historyIsFuture' => $historyIsFuture,
+            'historyMonthLabels' => $historyMonthLabels,
+            'historySummary' => $historySummary,
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'selectedHistoryMonth' => $selectedHistoryMonth,
             'weekOptions' => $weekOptions,
             'weekDateBounds' => $weekDateBounds,
             'selectedWeek' => (string) old('week_number', 1),
@@ -81,11 +123,11 @@ class FinanceCashPositionController extends Controller
         $this->authorizeFinance($request);
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255', 'unique:marketing_cash_accounts,name'],
+            'name' => ['required', 'string', 'max:255', 'unique:finance_cash_accounts,name'],
             'balance' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
         ]);
 
-        MarketingCashAccount::query()->create([
+        FinanceCashAccount::query()->create([
             'account_key' => 'finance-'.Str::uuid(),
             'name' => trim($validated['name']),
             'balance' => $validated['balance'] ?? null,
@@ -95,7 +137,7 @@ class FinanceCashPositionController extends Controller
         return to_route('keuangan.cash-position.index')->with('success', 'Rekening berhasil ditambahkan.');
     }
 
-    public function updateAccount(Request $request, MarketingCashAccount $cashAccount): RedirectResponse
+    public function updateAccount(Request $request, FinanceCashAccount $cashAccount): RedirectResponse
     {
         $this->authorizeFinance($request);
 
@@ -139,7 +181,7 @@ class FinanceCashPositionController extends Controller
         }
 
         unset($validated['week_number']);
-        MarketingCashFlow::query()->create([
+        FinanceCashFlow::query()->create([
             ...$validated,
             'created_by' => $request->user()->id,
         ]);
@@ -147,18 +189,20 @@ class FinanceCashPositionController extends Controller
         return to_route('keuangan.cash-position.index')->with('success', 'Rencana pemasukan/pengeluaran berhasil ditambahkan.');
     }
 
-    public function destroyCashFlow(Request $request, MarketingCashFlow $cashFlow): RedirectResponse
+    public function destroyCashFlow(Request $request, FinanceCashFlow $cashFlow): RedirectResponse
     {
         $this->authorizeFinance($request);
+        $historyMonth = $cashFlow->due_date->format('Y-m');
         $cashFlow->delete();
 
-        return to_route('keuangan.cash-position.index')->with('success', 'Rencana arus kas berhasil dihapus.');
+        return to_route('keuangan.cash-position.index', ['history_month' => $historyMonth])
+            ->with('success', 'Rencana arus kas berhasil dihapus.');
     }
 
     private function authorizeFinance(Request $request): void
     {
         $user = $request->user();
 
-        abort_unless($user?->isAdmin() || $user?->isAssignedToDivision('keuangan'), 403);
+        abort_unless($user?->isAdmin() || $user?->isAssignedToDivision('finance'), 403);
     }
 }

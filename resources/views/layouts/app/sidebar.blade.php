@@ -257,16 +257,16 @@
 
                 @endif
 
-                {{-- MENU KEUANGAN --}}
-                @if(auth()->user()->role === 'admin' || in_array(auth()->user()->role, ['tl_keuangan', 'staff_keuangan']))
-                    <flux:sidebar.group :heading="__('Keuangan')" class="grid">
+                {{-- MENU FINANCE --}}
+                @if(auth()->user()->role === 'admin' || in_array(auth()->user()->role, ['tl_finance', 'staff_finance']))
+                    <flux:sidebar.group :heading="__('Finance')" class="grid">
                         <flux:sidebar.item
                             icon="banknotes"
                             :href="route('keuangan.cash-position.index')"
                             :current="request()->routeIs('keuangan.*')"
                             wire:navigate
                         >
-                            Saldo Bank &amp; Rencana
+                            Saldo Bank &amp; Rencana Finance
                         </flux:sidebar.item>
                     </flux:sidebar.group>
                 @endif

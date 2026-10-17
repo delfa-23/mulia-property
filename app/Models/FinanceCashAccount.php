@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class MarketingCashAccount extends Model
+class FinanceCashAccount extends Model
 {
     protected $fillable = [
         'account_key',

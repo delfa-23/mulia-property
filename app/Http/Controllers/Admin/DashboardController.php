@@ -54,11 +54,19 @@ class DashboardController extends Controller
             ->when($propertyId && ! $blockId, fn ($query) => $query->where('property_id', $propertyId));
 
         $properties = Property::query()->orderBy('name')->get();
+        $selectedProperty = $properties->firstWhere('id', $propertyId);
         $lots = Lot::query()
             ->with('block')
             ->when($propertyId, fn ($query) => $query->whereHas('block', fn ($query) => $query->where('property_id', $propertyId)))
             ->orderBy('lot_number')
             ->get();
+        $sitePlanLots = $propertyId
+            ? Lot::query()
+                ->with('block')
+                ->whereHas('block', fn ($query) => $query->where('property_id', $propertyId))
+                ->orderBy('lot_number')
+                ->get()
+            : collect();
 
         $lotStats = $filterLots(Lot::query());
         $bookingStats = $filterLotRelations(Booking::query());
@@ -177,15 +185,7 @@ class DashboardController extends Controller
             'weekly_reports' => WeeklyReport::query()->latest()->limit(5)->get(),
         ];
 
-        $lotStatusDefinitions = [
-            'available' => ['label' => 'Tersedia', 'color' => '#009851'],
-            'booked' => ['label' => 'Booking', 'color' => '#3b82f6'],
-            'process' => ['label' => 'Proses Berkas', 'color' => '#ff9100'],
-            'akad' => ['label' => 'Akad', 'color' => '#6366f1'],
-            'finish' => ['label' => 'Finish', 'color' => '#10b981'],
-            'blocked' => ['label' => 'Blocked', 'color' => '#64748b'],
-            'cancelled' => ['label' => 'Dibatalkan', 'color' => '#ff1100'],
-        ];
+        $lotStatusDefinitions = config('lot_statuses');
         $lotStatusTotal = $stats['total_lots'];
         $lotStatusChart = collect($lotStatusDefinitions)
             ->map(function (array $statusData, string $status) use ($lotStats, $lotStatusTotal): array {
@@ -277,7 +277,9 @@ class DashboardController extends Controller
         return view('admin.dashboard', compact(
             'stats',
             'properties',
+            'selectedProperty',
             'lots',
+            'sitePlanLots',
             'propertyId',
             'blockId',
             'lotId',

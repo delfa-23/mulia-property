@@ -17,14 +17,13 @@ use App\Http\Controllers\Marketing\BookingController as MarketingBookingControll
 use App\Http\Controllers\Marketing\CustomerController as MarketingCustomerController;
 use App\Http\Controllers\Marketing\DashboardController as MarketingDashboardController;
 use App\Http\Controllers\Marketing\LotController as MarketingLotController;
-use App\Http\Controllers\Marketing\MarketingCashAccountController;
-use App\Http\Controllers\Marketing\MarketingCashFlowController;
 use App\Http\Controllers\Marketing\MarketingLeadActivityController;
 use App\Http\Controllers\Marketing\MarketingLeadCalendarController;
 use App\Http\Controllers\Marketing\MarketingLeadController;
 use App\Http\Controllers\Marketing\MarketingLeadFollowUpController;
 use App\Http\Controllers\Marketing\MarketingLeadReportController;
 use App\Http\Controllers\Marketing\SalesController as MarketingSalesController;
+use App\Http\Controllers\Marketing\SitePlanController as MarketingSitePlanController;
 use App\Http\Controllers\Pembangunan\DashboardController as PembangunanDashboardController;
 use App\Http\Controllers\Pembangunan\FacilityProgressController;
 use App\Http\Controllers\Pembangunan\FinanceController as PembangunanFinanceController;
@@ -34,6 +33,7 @@ use App\Http\Controllers\Pemberkasan\AdditionalDocumentController;
 use App\Http\Controllers\Pemberkasan\BookingController as PemberkasanBookingController;
 use App\Http\Controllers\Pemberkasan\DashboardController as PemberkasanDashboardController;
 use App\Http\Controllers\Reports\ProgressReportController;
+use App\Http\Controllers\SitePlanCoordinatesController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
@@ -131,6 +131,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         Route::resource('properties', PropertyController::class)
             ->except(['show']);
+        Route::put('/properties/{property}/lots/{lot}/map-coordinates', [SitePlanCoordinatesController::class, 'update'])
+            ->name('properties.lots.map-coordinates.update');
 
         Route::resource(
             'properties.blocks',
@@ -233,7 +235,7 @@ Route::prefix('finance')
     });
 
 Route::prefix('keuangan')
-    ->middleware(['auth', 'verified', 'division:keuangan'])
+    ->middleware(['auth', 'verified', 'division:finance'])
     ->name('keuangan.')
     ->group(function () {
         Route::get('/cash-position', [FinanceCashPositionController::class, 'index'])->name('cash-position.index');
@@ -248,11 +250,12 @@ Route::prefix('marketing')
     ->name('marketing.')
     ->group(function () {
         Route::get('/dashboard', [MarketingDashboardController::class, 'index'])->name('dashboard');
-        Route::put('/cash-accounts/{cashAccount}', [MarketingCashAccountController::class, 'update'])
-            ->name('cash-accounts.update');
-        Route::post('/cash-flows', [MarketingCashFlowController::class, 'store'])->name('cash-flows.store');
-        Route::delete('/cash-flows/{cashFlow}', [MarketingCashFlowController::class, 'destroy'])
-            ->name('cash-flows.destroy');
+        Route::get('/properties/{property}/site-plan', [MarketingSitePlanController::class, 'edit'])
+            ->name('site-plans.edit');
+        Route::put('/properties/{property}/site-plan', [MarketingSitePlanController::class, 'update'])
+            ->name('site-plans.update');
+        Route::put('/properties/{property}/lots/{lot}/map-coordinates', [SitePlanCoordinatesController::class, 'update'])
+            ->name('site-plans.coordinates.update');
         Route::get('/lots', [MarketingLotController::class, 'index'])->name('lots.index');
         Route::resource('sales', MarketingSalesController::class)->except(['show']);
         Route::resource('leads', MarketingLeadController::class)->except(['show']);

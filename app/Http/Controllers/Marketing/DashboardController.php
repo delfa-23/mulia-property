@@ -8,8 +8,6 @@ use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\ExpenseTransaction;
 use App\Models\Lot;
-use App\Models\MarketingCashAccount;
-use App\Models\MarketingCashFlow;
 use App\Models\Property;
 use App\Models\Sales;
 use Illuminate\Http\Request;
@@ -149,37 +147,8 @@ class DashboardController extends Controller
             ->limit(6)
             ->get();
 
-        $cashAccounts = MarketingCashAccount::query()->orderBy('id')->get();
-        $today = today();
-        $cashFlowPlans = MarketingCashFlow::query()
-            ->with('property')
-            ->whereBetween('due_date', [$today->toDateString(), $today->copy()->addDays(30)->toDateString()])
-            ->when($propertyId, fn ($query) => $query->where(fn ($query) => $query
-                ->whereNull('property_id')
-                ->orWhere('property_id', $propertyId)))
-            ->orderBy('due_date')
-            ->orderBy('id')
-            ->get();
-        $cashFlowForecasts = collect([7, 14, 30])
-            ->mapWithKeys(function (int $days) use ($cashFlowPlans, $today): array {
-                $plansInHorizon = $cashFlowPlans->filter(
-                    fn (MarketingCashFlow $plan): bool => $plan->due_date->lte($today->copy()->addDays($days))
-                );
-                $totals = [];
-
-                foreach (['income', 'outcome'] as $direction) {
-                    foreach (['confirmed', 'potential', 'forecast'] as $status) {
-                        $totals[$direction.'_'.$status] = (float) $plansInHorizon
-                            ->where('direction', $direction)
-                            ->where('status', $status)
-                            ->sum('amount');
-                    }
-                }
-
-                return [$days => $totals];
-            });
-
         $properties = Property::query()->orderBy('name')->get();
+        $selectedProperty = $properties->firstWhere('id', $propertyId);
         $blocks = Block::query()
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->orderBy('name')
@@ -190,12 +159,21 @@ class DashboardController extends Controller
             ->when($blockId, fn ($query) => $query->where('block_id', $blockId))
             ->orderBy('lot_number')
             ->get();
+        $sitePlanLots = $propertyId
+            ? Lot::query()
+                ->with('block')
+                ->whereHas('block', fn ($query) => $query->where('property_id', $propertyId))
+                ->orderBy('lot_number')
+                ->get()
+            : collect();
 
         return view('marketing.dashboard', compact(
             'stats',
             'properties',
+            'selectedProperty',
             'blocks',
             'lots',
+            'sitePlanLots',
             'propertyId',
             'blockId',
             'lotId',
@@ -204,9 +182,6 @@ class DashboardController extends Controller
             'financialStats',
             'recentExpenses',
             'expenseByCategory',
-            'cashAccounts',
-            'cashFlowPlans',
-            'cashFlowForecasts',
             'bookingStatusChart',
             'monthlyBookingChart',
             'monthlyBookingChartMax',

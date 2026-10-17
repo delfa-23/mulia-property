@@ -108,12 +108,12 @@
                             Staff Pemberkasan
                         </option>
 
-                        <option value="tl_keuangan" @selected(old('role') === 'tl_keuangan')>
-                            TL Keuangan
+                        <option value="tl_finance" @selected(old('role') === 'tl_finance')>
+                            TL Finance
                         </option>
 
-                        <option value="staff_keuangan" @selected(old('role') === 'staff_keuangan')>
-                            Staff Keuangan
+                        <option value="staff_finance" @selected(old('role') === 'staff_finance')>
+                            Staff Finance
                         </option>
 
                     </select>
@@ -201,8 +201,8 @@
                 staff_marketing: 'Marketing',
                 tl_pemberkasan: 'Pemberkasan',
                 staff_pemberkasan: 'Pemberkasan',
-                tl_keuangan: 'Keuangan',
-                staff_keuangan: 'Keuangan',
+                tl_finance: 'Finance',
+                staff_finance: 'Finance',
             };
 
             divisionInfo.textContent =

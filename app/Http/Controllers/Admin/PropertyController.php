@@ -4,12 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ConstructionStage;
+use App\Models\Lot;
 use App\Models\Property;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use RuntimeException;
 
 class PropertyController extends Controller
 {
@@ -65,9 +69,17 @@ class PropertyController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'address' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
+            'site_plan' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
-        Property::create($validated);
+        $sitePlan = $validated['site_plan'] ?? null;
+        unset($validated['site_plan']);
+
+        if ($sitePlan !== null) {
+            $validated['site_plan_path'] = $this->storeSitePlan($sitePlan);
+        }
+
+        $property = Property::create($validated);
 
         return redirect()
             ->route('admin.properties.index')
@@ -76,8 +88,34 @@ class PropertyController extends Controller
 
     public function edit(Property $property): View
     {
+        $lots = $property->lots()
+            ->with('block')
+            ->orderBy('lot_number')
+            ->get();
+        $mappedLotCount = $lots->whereNotNull('map_coordinates')->count();
+        $blocks = $property->blocks()->withCount('lots')->orderBy('name')->get();
+        $mappedLotCountsByBlock = $lots
+            ->whereNotNull('map_coordinates')
+            ->countBy('block_id');
+        $hasLots = $lots->isNotEmpty()
+            && $blocks->isNotEmpty()
+            && $blocks->every(fn ($block) => $block->lots_count > 0);
+        $incompleteBlocks = $blocks
+            ->where('lots_count', 0)
+            ->pluck('name');
+
         return view('admin.properties.edit', [
             'property' => $property,
+            'blocks' => $blocks,
+            'lots' => $lots,
+            'mappedLotCount' => $mappedLotCount,
+            'mappedLotCountsByBlock' => $mappedLotCountsByBlock,
+            'incompleteBlocks' => $incompleteBlocks,
+            'hasSitePlan' => filled($property->site_plan_path),
+            'hasLots' => $hasLots,
+            'allLotsMapped' => $hasLots && $mappedLotCount === $lots->count(),
+            'coordinateRoute' => 'admin.properties.lots.map-coordinates.update',
+            'manageLotsUrl' => route('admin.properties.blocks.index', $property),
             'routePrefix' => 'admin.properties',
         ]);
     }
@@ -90,13 +128,44 @@ class PropertyController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'address' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
+            'site_plan' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
+        $sitePlan = $validated['site_plan'] ?? null;
+        unset($validated['site_plan']);
+
+        $previousSitePlanPath = $property->site_plan_path;
+
+        if ($sitePlan !== null) {
+            $validated['site_plan_path'] = $this->storeSitePlan($sitePlan);
+        }
+
         $property->update($validated);
+
+        if ($sitePlan !== null && $previousSitePlanPath !== null) {
+            Storage::disk('public')->delete($previousSitePlanPath);
+        }
+
+        if ($sitePlan !== null) {
+            Lot::query()
+                ->whereHas('block', fn ($query) => $query->where('property_id', $property->id))
+                ->update(['map_coordinates' => null]);
+        }
 
         return redirect()
             ->route('admin.properties.index')
             ->with('success', 'Property berhasil diperbarui.');
+    }
+
+    private function storeSitePlan(UploadedFile $sitePlan): string
+    {
+        $path = $sitePlan->store('site-plans', 'public');
+
+        if ($path === false) {
+            throw new RuntimeException('Denah perumahan gagal disimpan ke penyimpanan.');
+        }
+
+        return $path;
     }
 
     public function storeConstructionStage(Request $request, Property $property): RedirectResponse
