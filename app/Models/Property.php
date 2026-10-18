@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Property extends Model
 {
@@ -16,6 +17,25 @@ class Property extends Model
         'description',
         'site_plan_path',
     ];
+
+    public function sitePlanUrl(): ?string
+    {
+        $path = $this->site_plan_path;
+
+        if (! is_string($path) || $path === '') {
+            return null;
+        }
+
+        if (Storage::disk('site-plans')->exists($path)) {
+            return Storage::disk('site-plans')->url($path);
+        }
+
+        if (Storage::disk('public')->exists($path)) {
+            return Storage::disk('public')->url($path);
+        }
+
+        return Storage::disk('site-plans')->url($path);
+    }
 
     public function blocks(): HasMany
     {

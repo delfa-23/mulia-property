@@ -46,7 +46,7 @@
             <div class="min-w-0 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
                 <div class="relative min-w-[640px]">
                     <img
-                        src="{{ Storage::disk('public')->url($property->site_plan_path) }}"
+                        src="{{ $property->sitePlanUrl() }}"
                         alt="Denah {{ $property->name }}"
                         class="block h-auto w-full select-none"
                         draggable="false"

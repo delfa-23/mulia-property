@@ -60,6 +60,7 @@ class SitePlanController extends Controller
             ->update(['map_coordinates' => null]);
 
         if ($previousSitePlanPath !== null) {
+            Storage::disk('site-plans')->delete($previousSitePlanPath);
             Storage::disk('public')->delete($previousSitePlanPath);
         }
 
@@ -70,7 +71,7 @@ class SitePlanController extends Controller
 
     private function storeSitePlan(UploadedFile $sitePlan): string
     {
-        $path = $sitePlan->store('site-plans', 'public');
+        $path = $sitePlan->store('site-plans', 'site-plans');
 
         if ($path === false) {
             throw new RuntimeException('Denah perumahan gagal disimpan ke penyimpanan.');

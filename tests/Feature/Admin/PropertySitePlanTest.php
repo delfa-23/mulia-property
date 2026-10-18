@@ -9,7 +9,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
 it('uploads a site plan when creating a property', function () {
-    Storage::fake('public');
+    Storage::fake('site-plans');
     $admin = User::factory()->create(['role' => 'admin']);
 
     $this->actingAs($admin)
@@ -22,10 +22,21 @@ it('uploads a site plan when creating a property', function () {
     $property = Property::query()->where('name', 'Mulia Residence')->firstOrFail();
 
     expect($property->site_plan_path)->not->toBeNull();
-    Storage::disk('public')->assertExists($property->site_plan_path);
+    Storage::disk('site-plans')->assertExists($property->site_plan_path);
+    expect($property->sitePlanUrl())->toBe(Storage::disk('site-plans')->url($property->site_plan_path));
+});
+
+it('serves existing site plans from Laravel public storage when the new disk has no file', function () {
+    Storage::fake('site-plans');
+    Storage::fake('public');
+    Storage::disk('public')->put('site-plans/existing.png', 'existing plan');
+    $property = new Property(['site_plan_path' => 'site-plans/existing.png']);
+
+    expect($property->sitePlanUrl())->toBe(Storage::disk('public')->url('site-plans/existing.png'));
 });
 
 it('replaces a site plan and clears old lot map positions', function () {
+    Storage::fake('site-plans');
     Storage::fake('public');
     Storage::disk('public')->put('site-plans/old.png', 'old plan');
     $admin = User::factory()->create(['role' => 'admin']);
@@ -54,7 +65,7 @@ it('replaces a site plan and clears old lot map positions', function () {
     expect($property->site_plan_path)->not->toBe('site-plans/old.png')
         ->and($lot->fresh()->map_coordinates)->toBeNull();
     Storage::disk('public')->assertMissing('site-plans/old.png');
-    Storage::disk('public')->assertExists($property->site_plan_path);
+    Storage::disk('site-plans')->assertExists($property->site_plan_path);
 });
 
 it('rejects a non-image site plan upload', function () {
@@ -225,6 +236,7 @@ it('allows marketing staff to open the site plan manager for a property', functi
 });
 
 it('lets marketing replace a site plan and clears old mapped positions', function () {
+    Storage::fake('site-plans');
     Storage::fake('public');
     Storage::disk('public')->put('site-plans/old-marketing.png', 'old plan');
     $division = Division::create([
@@ -260,7 +272,7 @@ it('lets marketing replace a site plan and clears old mapped positions', functio
     expect($property->site_plan_path)->not->toBe('site-plans/old-marketing.png')
         ->and($lot->fresh()->map_coordinates)->toBeNull();
     Storage::disk('public')->assertMissing('site-plans/old-marketing.png');
-    Storage::disk('public')->assertExists($property->site_plan_path);
+    Storage::disk('site-plans')->assertExists($property->site_plan_path);
 });
 
 it('lets marketing save a lot position but prevents mapping a lot from another property', function () {

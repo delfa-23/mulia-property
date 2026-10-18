@@ -47,6 +47,18 @@ return [
             'report' => false,
         ],
 
+        'site-plans' => [
+            'driver' => 'local',
+            'root' => env('SITE_PLANS_PATH', public_path('images')),
+            'url' => rtrim((string) env(
+                'SITE_PLANS_URL',
+                rtrim((string) env('APP_URL', 'http://localhost'), '/').'/images',
+            ), '/'),
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

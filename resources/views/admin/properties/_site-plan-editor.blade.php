@@ -110,7 +110,7 @@
             <div class="overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2">
                 <div data-site-plan-canvas class="relative w-full cursor-crosshair touch-none select-none">
                     <img
-                        src="{{ Storage::disk('public')->url($property->site_plan_path) }}"
+                        src="{{ $property->sitePlanUrl() }}"
                         alt="Denah {{ $property->name }} untuk penandaan kavling"
                         draggable="false"
                         class="pointer-events-none block h-auto w-full"

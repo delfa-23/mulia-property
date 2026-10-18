@@ -177,7 +177,7 @@
                     </label>
                     @if($property->site_plan_path)
                         <img
-                            src="{{ Storage::disk('public')->url($property->site_plan_path) }}"
+                            src="{{ $property->sitePlanUrl() }}"
                             alt="Denah {{ $property->name }}"
                             class="mb-3 max-h-64 rounded-lg border border-gray-200 object-contain"
                         >
