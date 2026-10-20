@@ -72,9 +72,12 @@
         <x-site-plan-map
             :property="$selectedProperty"
             :lots="$sitePlanLots"
+            :areas="$sitePlanAreas"
             :selected-lot-id="$lotId"
-            :manage-url="$selectedProperty ? route('marketing.site-plans.edit', $selectedProperty) : null"
+            :manage-url="null"
             :dashboard-url="route('marketing.dashboard')"
+            detail-mode="modal"
+            management-role="marketing"
         />
 
         @if(session('status'))
@@ -205,7 +208,7 @@
         </div>
 
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            @foreach([['Customer',$stats['total_customers']],['Booking Aktif',$stats['active_bookings']],['Booking Proses',$stats['process_bookings']],['Booking Finish',$stats['finish_bookings']],['Kavling Available',$stats['available_lots']],['Kavling Blocked',$stats['blocked_lots']],['Kavling Terisi',$stats['booked_lots']],['Akad',$stats['akad_bookings']]] as [$label,$value])
+            @foreach([['Customer',$stats['total_customers']],['Booking Aktif',$stats['active_bookings']],['Booking Proses',$stats['process_bookings']],['Serah Terima Rumah',$stats['finish_bookings']],['Kavling Available',$stats['available_lots']],['Kavling Blocked',$stats['blocked_lots']],['Kavling Terisi',$stats['booked_lots']],['Akad',$stats['akad_bookings']]] as [$label,$value])
                 <div class="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-zinc-500">{{ $label }}</p><p class="mt-2 text-3xl font-bold">{{ $value }}</p></div>
             @endforeach
         </div>

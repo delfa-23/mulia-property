@@ -8,7 +8,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ConstructionStageController extends Controller
@@ -66,8 +65,6 @@ class ConstructionStageController extends Controller
             ],
         ]);
 
-        $this->ensureRangeDoesNotOverlap($validated);
-
         ConstructionStage::create($validated);
 
         return redirect()
@@ -124,8 +121,6 @@ class ConstructionStageController extends Controller
             ],
         ]);
 
-        $this->ensureRangeDoesNotOverlap($validated, $constructionStage);
-
         $constructionStage->update($validated);
 
         return redirect()
@@ -144,22 +139,5 @@ class ConstructionStageController extends Controller
         return redirect()
             ->route('admin.construction-stages.index')
             ->with('success', 'Tahapan pembangunan berhasil dihapus.');
-    }
-
-    /** @param array<string, mixed> $validated */
-    private function ensureRangeDoesNotOverlap(array $validated, ?ConstructionStage $ignoredStage = null): void
-    {
-        $overlappingStageExists = ConstructionStage::query()
-            ->where('property_id', $ignoredStage?->property_id)
-            ->where('min_progress', '<=', $validated['max_progress'])
-            ->where('max_progress', '>=', $validated['min_progress'])
-            ->when($ignoredStage, fn ($query) => $query->where('id', '!=', $ignoredStage->getKey()))
-            ->exists();
-
-        if ($overlappingStageExists) {
-            throw ValidationException::withMessages([
-                'min_progress' => 'Range persentase bertabrakan dengan tahapan pembangunan lain.',
-            ]);
-        }
     }
 }

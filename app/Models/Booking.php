@@ -96,4 +96,9 @@ class Booking extends Model
     {
         return $this->hasMany(BookingPayment::class)->latest('paid_at');
     }
+
+    public function paymentOrders(): HasMany
+    {
+        return $this->hasMany(BookingPaymentOrder::class)->latest();
+    }
 }

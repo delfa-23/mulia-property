@@ -7,6 +7,8 @@ use App\Models\Division;
 use App\Models\Lot;
 use App\Models\Property;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 function createPropertyManagementUser(string $role = 'admin'): User
 {
@@ -117,6 +119,73 @@ test('admin can manage properties blocks and lots', function () {
     $this->assertDatabaseMissing('lots', ['id' => $lot->id]);
 });
 
+test('admin can upload, add, and remove lot photos', function () {
+    Storage::fake('site-plans');
+    $user = createPropertyManagementUser();
+    $property = Property::create(['name' => 'Perumahan Foto Kavling']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+
+    $this->actingAs($user)
+        ->get(route('admin.properties.blocks.lots.create', [$property, $block]))
+        ->assertSee('name="images[]"', false)
+        ->assertSee('+ Tambah foto')
+        ->assertSee('multipart/form-data');
+
+    $this->post(route('admin.properties.blocks.lots.store', [$property, $block]), [
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'available',
+        'images' => [UploadedFile::fake()->create('lot.pdf', 100, 'application/pdf')],
+    ])->assertSessionHasErrors('images.0');
+
+    $this->assertDatabaseMissing('lots', ['block_id' => $block->id]);
+
+    $this->post(route('admin.properties.blocks.lots.store', [$property, $block]), [
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'available',
+        'images' => [
+            UploadedFile::fake()->image('lot.jpg'),
+            UploadedFile::fake()->image('lot-side.jpg'),
+        ],
+    ])->assertRedirect(route('admin.properties.blocks.lots.index', [$property, $block]));
+
+    $lot = Lot::query()->where('block_id', $block->id)->firstOrFail();
+    $firstImagePath = $lot->image_path;
+    $secondImagePath = $lot->image_paths[0];
+
+    expect($firstImagePath)->toStartWith('lots/')
+        ->and($lot->imagePaths())->toHaveCount(2);
+    Storage::disk('site-plans')->assertExists($firstImagePath);
+    Storage::disk('site-plans')->assertExists($secondImagePath);
+
+    $this->put(route('admin.properties.blocks.lots.update', [$property, $block, $lot]), [
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'available',
+        'remove_images' => ['lots/not-owned.jpg'],
+    ])->assertSessionHasErrors('remove_images.0');
+
+    Storage::disk('site-plans')->assertExists($firstImagePath);
+    Storage::disk('site-plans')->assertExists($secondImagePath);
+
+    $this->put(route('admin.properties.blocks.lots.update', [$property, $block, $lot]), [
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'available',
+        'images' => [null, UploadedFile::fake()->image('additional.jpg')],
+        'remove_images' => [$firstImagePath],
+    ])->assertRedirect(route('admin.properties.blocks.lots.index', [$property, $block]));
+
+    $lot->refresh();
+
+    expect($lot->imagePaths())->toHaveCount(2)
+        ->and($lot->image_path)->toBe($secondImagePath);
+    Storage::disk('site-plans')->assertMissing($firstImagePath);
+    Storage::disk('site-plans')->assertExists($secondImagePath);
+    Storage::disk('site-plans')->assertExists($lot->image_paths[0]);
+});
+
 test('admin saves house prices entered with Indonesian separators', function (string $housePrice) {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Harga']);
@@ -181,7 +250,7 @@ test('admin can add construction stages scoped to each property', function () {
     ]);
 });
 
-test('admin cannot add overlapping progress ranges for one property', function () {
+test('admin can use the same progress range for multiple property stages', function () {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Range']);
     $property->constructionStages()->create([
@@ -192,19 +261,123 @@ test('admin cannot add overlapping progress ranges for one property', function (
     ]);
 
     $this->actingAs($user)
-        ->from(route('admin.properties.index'))
         ->post(route('admin.property-construction-stages.store', $property), [
             'name' => 'Pekerjaan Berikutnya',
             'order' => 2,
-            'min_progress' => 15,
-            'max_progress' => 30,
+            'min_progress' => 1,
+            'max_progress' => 20,
         ])
-        ->assertRedirect(route('admin.properties.index'))
-        ->assertSessionHasErrors('min_progress');
+        ->assertRedirect()
+        ->assertSessionHas('success');
 
-    $this->assertDatabaseMissing('construction_stages', [
+    $this->assertDatabaseHas('construction_stages', [
         'property_id' => $property->id,
         'name' => 'Pekerjaan Berikutnya',
+        'min_progress' => 1,
+        'max_progress' => 20,
+    ]);
+});
+
+test('admin can edit a property construction stage', function () {
+    $user = createPropertyManagementUser();
+    $property = Property::create(['name' => 'Perumahan Edit Tahapan']);
+    $stage = $property->constructionStages()->create([
+        'name' => 'Pekerjaan Awal',
+        'order' => 1,
+        'min_progress' => 1,
+        'max_progress' => 20,
+        'description' => 'Sebelum perubahan',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('admin.property-construction-stages.index'))
+        ->assertSee('Edit')
+        ->assertSee(route('admin.property-construction-stages.update', [$property, $stage]), false);
+
+    $this->put(route('admin.property-construction-stages.update', [$property, $stage]), [
+        'name' => 'Pekerjaan Struktur',
+        'order' => 2,
+        'min_progress' => 1,
+        'max_progress' => 20,
+        'description' => 'Tahap struktur',
+    ])
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Tahapan pembangunan berhasil diperbarui di '.$property->name.'.');
+
+    $this->assertDatabaseHas('construction_stages', [
+        'id' => $stage->id,
+        'property_id' => $property->id,
+        'name' => 'Pekerjaan Struktur',
+        'order' => 2,
+        'min_progress' => 1,
+        'max_progress' => 20,
+        'description' => 'Tahap struktur',
+    ]);
+});
+
+test('construction staff can manage property construction stages from their sidebar page', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Tim Pembangunan']);
+    $stage = $property->constructionStages()->create([
+        'name' => 'Pekerjaan Pondasi',
+        'order' => 1,
+        'min_progress' => 0,
+        'max_progress' => 30,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('pembangunan.property-construction-stages.index'))
+        ->assertSee('Tahapan Pembangunan')
+        ->assertSee('Perumahan Tim Pembangunan')
+        ->assertSee(route('pembangunan.property-construction-stages.update', [$property, $stage]), false)
+        ->assertSee(route('pembangunan.property-construction-stages.store', $property), false);
+
+    $this->put(route('pembangunan.property-construction-stages.update', [$property, $stage]), [
+        'name' => 'Pondasi Selesai',
+        'order' => 1,
+        'min_progress' => 0,
+        'max_progress' => 30,
+    ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $this->assertDatabaseHas('construction_stages', [
+        'id' => $stage->id,
+        'property_id' => $property->id,
+        'name' => 'Pondasi Selesai',
+    ]);
+});
+
+test('admin cannot edit a property construction stage owned by another property', function () {
+    $user = createPropertyManagementUser();
+    $property = Property::create(['name' => 'Perumahan Pertama']);
+    $otherProperty = Property::create(['name' => 'Perumahan Kedua']);
+    $stage = $otherProperty->constructionStages()->create([
+        'name' => 'Tahap Milik Kedua',
+        'order' => 1,
+        'min_progress' => 1,
+        'max_progress' => 20,
+    ]);
+
+    $this->actingAs($user)
+        ->put(route('admin.property-construction-stages.update', [$property, $stage]), [
+            'name' => 'Tahap Diubah',
+            'order' => 1,
+            'min_progress' => 1,
+            'max_progress' => 20,
+        ])
+        ->assertNotFound();
+
+    $this->assertDatabaseHas('construction_stages', [
+        'id' => $stage->id,
+        'name' => 'Tahap Milik Kedua',
     ]);
 });
 

@@ -3,7 +3,7 @@
         <div>
             <h1 class="text-2xl font-semibold">Alerts / Miss-com</h1>
             <p class="mt-1 text-sm text-zinc-500">
-                Admin melihat seluruh alert. Divisi hanya melihat alert yang ditujukan kepadanya.
+                Admin melihat seluruh alert. Divisi melihat alert yang ditujukan kepadanya dan alert yang dikirimnya.
             </p>
         </div>
 
@@ -22,9 +22,7 @@
                             <th class="px-6 py-3">Tujuan</th>
                             <th class="px-6 py-3">Kavling</th>
                             <th class="px-6 py-3">Status</th>
-                            @if($isAdmin)
-                                <th class="px-6 py-3">Aksi</th>
-                            @endif
+                            <th class="px-6 py-3">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
@@ -42,22 +40,22 @@
                                 <td class="px-6 py-4">{{ $alert->recipientDivisions->pluck('name')->join(', ') ?: 'Admin' }}</td>
                                 <td class="px-6 py-4">{{ $alert->lot?->lot_number ?? '-' }}</td>
                                 <td class="px-6 py-4">{{ $alert->is_resolved ? 'Selesai' : 'Aktif' }}</td>
-                                @if($isAdmin)
-                                    <td class="px-6 py-4">
-                                        @if(! $alert->is_resolved)
-                                            <form method="POST" action="{{ route('admin.alerts.resolve', $alert) }}">
-                                                @csrf
-                                                <button class="text-blue-600">Selesaikan</button>
-                                            </form>
-                                        @else
-                                            {{ $alert->resolvedBy?->name ?? '-' }}
-                                        @endif
-                                    </td>
-                                @endif
+                                <td class="px-6 py-4">
+                                    @if(! $alert->is_resolved && ($isAdmin || $alert->recipientDivisions->contains('id', $divisionId)))
+                                        <form method="POST" action="{{ route('alerts.resolve', $alert) }}">
+                                            @csrf
+                                            <button type="submit" class="font-medium text-blue-700 hover:underline">Tandai selesai</button>
+                                        </form>
+                                    @elseif($alert->is_resolved)
+                                        {{ $alert->resolvedBy?->name ?? 'Selesai' }}
+                                    @else
+                                        -
+                                    @endif
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ $isAdmin ? 7 : 6 }}" class="px-6 py-10 text-center text-zinc-500">
+                                <td colspan="7" class="px-6 py-10 text-center text-zinc-500">
                                     Belum ada alert untuk ditampilkan.
                                 </td>
                             </tr>

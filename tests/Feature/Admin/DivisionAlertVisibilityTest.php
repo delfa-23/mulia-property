@@ -3,8 +3,9 @@
 use App\Models\Alert;
 use App\Models\Division;
 use App\Models\User;
+use App\Notifications\AlertActivity;
 
-test('alerts sent to a division are visible to that division and admin only', function () {
+test('alerts sent to a division are visible to the sender, recipient division, and admin only', function () {
     $marketingDivision = Division::create([
         'name' => 'Marketing',
         'slug' => 'marketing',
@@ -50,9 +51,16 @@ test('alerts sent to a division are visible to that division and admin only', fu
         'division_id' => $pemberkasanDivision->id,
     ]);
 
-    $this->actingAs($pemberkasanUser)
+    $this->actingAs($marketingUser)
         ->get(route('alerts.index'))
         ->assertSee('Dokumen siap diperiksa');
+
+    $this->actingAs($pemberkasanUser)
+        ->get(route('alerts.index'))
+        ->assertSee('Dokumen siap diperiksa')
+        ->assertSee('data-alert-count', false)
+        ->assertDontSee('data-alert-notifications', false)
+        ->assertDontSee('fixed right-4 top-4', false);
 
     $this->actingAs($financeUser)
         ->get(route('alerts.index'))
@@ -122,9 +130,175 @@ test('finance can send an alert to another division and admin', function () {
 
     $this->actingAs($marketingUser)
         ->get(route('alerts.index'))
-        ->assertSee('Pembayaran perlu ditindaklanjuti');
+        ->assertSee('Pembayaran perlu ditindaklanjuti')
+        ->assertSee('data-alert-count', false);
+
+    $this->assertDatabaseHas('notifications', [
+        'notifiable_type' => User::class,
+        'notifiable_id' => $marketingUser->id,
+        'type' => AlertActivity::class,
+    ]);
+    $this->assertDatabaseHas('notifications', [
+        'notifiable_type' => User::class,
+        'notifiable_id' => $admin->id,
+        'type' => AlertActivity::class,
+    ]);
 
     $this->actingAs($admin)
         ->get(route('admin.alerts.index'))
-        ->assertSee('Pembayaran perlu ditindaklanjuti');
+        ->assertSee('Pembayaran perlu ditindaklanjuti')
+        ->assertSee('data-alert-count', false);
+});
+
+test('only an admin or recipient division can resolve an alert and the sender is notified', function () {
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $financeDivision = Division::create([
+        'name' => 'Finance',
+        'slug' => 'finance',
+        'is_active' => true,
+    ]);
+    $pemberkasanDivision = Division::create([
+        'name' => 'Pemberkasan',
+        'slug' => 'pemberkasan',
+        'is_active' => true,
+    ]);
+    $sender = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $recipient = User::factory()->create([
+        'role' => 'staff_finance',
+        'division_id' => $financeDivision->id,
+    ]);
+    $unrelatedUser = User::factory()->create([
+        'role' => 'staff_pemberkasan',
+        'division_id' => $pemberkasanDivision->id,
+    ]);
+    $alert = Alert::create([
+        'created_by' => $sender->id,
+        'type' => 'Informasi',
+        'title' => 'Konfirmasi data kavling',
+        'message' => 'Data perlu dicek.',
+        'severity' => 'medium',
+    ]);
+    $alert->recipientDivisions()->sync([$financeDivision->id]);
+
+    $this->actingAs($unrelatedUser)
+        ->post(route('alerts.resolve', $alert))
+        ->assertForbidden();
+    $this->assertDatabaseHas('alerts', ['id' => $alert->id, 'is_resolved' => false]);
+
+    $this->actingAs($recipient)
+        ->post(route('alerts.resolve', $alert))
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Alert berhasil diselesaikan.');
+
+    $this->assertDatabaseHas('alerts', [
+        'id' => $alert->id,
+        'is_resolved' => true,
+        'resolved_by' => $recipient->id,
+    ]);
+    expect($sender->notifications()->where('type', AlertActivity::class)->firstOrFail()->data['event'])
+        ->toBe('resolved');
+
+    $this->actingAs($sender)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 1);
+
+    expect($sender->unreadNotifications()->where('type', AlertActivity::class)->exists())->toBeTrue();
+    expect($recipient->unreadNotifications()->where('type', AlertActivity::class)->exists())->toBeFalse();
+
+    $this->actingAs($recipient)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 0);
+
+    $this->actingAs($sender)
+        ->get(route('alerts.index'))
+        ->assertSee('Konfirmasi data kavling');
+
+    expect($sender->unreadNotifications()->where('type', AlertActivity::class)->exists())->toBeFalse();
+
+    $this->actingAs($sender)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 0);
+});
+
+test('inbox alert badge counts active alerts for the signed-in user and keeps active items until completion', function () {
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $financeDivision = Division::create([
+        'name' => 'Finance',
+        'slug' => 'finance',
+        'is_active' => true,
+    ]);
+    $sender = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $recipient = User::factory()->create([
+        'role' => 'staff_finance',
+        'division_id' => $financeDivision->id,
+    ]);
+    $otherUser = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+
+    $this->actingAs($sender)
+        ->post(route('alerts.store'), [
+            'type' => 'Informasi',
+            'title' => 'Alert popup Finance',
+            'message' => 'Ada data baru.',
+            'severity' => 'medium',
+            'recipient_division_ids' => [$financeDivision->id],
+        ])
+        ->assertRedirect(route('alerts.create'));
+
+    $this->actingAs($recipient)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 1);
+
+    $recipientNotification = $recipient->unreadNotifications()->where('type', AlertActivity::class)->firstOrFail();
+    expect($recipient->unreadNotifications()->where('type', AlertActivity::class)->exists())->toBeTrue();
+    expect($otherUser->notifications()->where('type', AlertActivity::class)->exists())->toBeFalse();
+
+    $recipientNotification->markAsRead();
+
+    $this->actingAs($recipient)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 1);
+
+    expect($recipient->unreadNotifications()->where('type', AlertActivity::class)->exists())->toBeFalse();
+
+    $this->actingAs($otherUser)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 0);
+
+    $this->actingAs($recipient)
+        ->post(route('alerts.resolve', Alert::query()->where('title', 'Alert popup Finance')->firstOrFail()))
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Alert berhasil diselesaikan.');
+
+    $this->actingAs($recipient)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 0);
+
+    $this->actingAs($sender)
+        ->postJson(route('notifications.alerts.pending-count'))
+        ->assertOk()
+        ->assertJsonPath('count', 1);
 });

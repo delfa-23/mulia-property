@@ -2,6 +2,8 @@
     @php
         $nextPaymentStage = collect($paymentSummary['stages'])
             ->first(fn (array $stage): bool => $stage['remaining'] > 0.009);
+        $pendingPaymentOrder = $booking->paymentOrders
+            ->first(fn ($order): bool => $order->status === 'pending');
         $autoCancelledByDeadline = $booking->histories->contains(
             fn ($history): bool => $history->to_status === 'cancelled'
                 && $history->notes === 'Booking dibatalkan otomatis karena batas blocking terlewati.'
@@ -23,8 +25,11 @@
         @if(session('success'))
             <div role="status" class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{{ session('success') }}</div>
         @endif
+        @if(session('error'))
+            <div role="alert" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ session('error') }}</div>
+        @endif
 
-        @if(($booking->status === 'booking' && $booking->blocking_until?->isPast()) || $autoCancelledByDeadline)
+        @if(($booking->status === 'booking' && $booking->blocking_until?->isPast() && ! $pendingPaymentOrder) || $autoCancelledByDeadline)
             <p role="alert" class="rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
                 @if($autoCancelledByDeadline)
                     Booking otomatis dibatalkan karena batas booking terlewati pada {{ $booking->blocking_until?->format('d/m/Y H:i') }}.
@@ -168,7 +173,32 @@
                 @endforeach
             </div>
 
-            @if($nextPaymentStage && $nextPaymentStage['key'] === 'dp' && ! in_array($booking->status, ['cancelled', 'finish'], true))
+            @if(! $pendingPaymentOrder && $nextPaymentStage && ! in_array($booking->status, ['cancelled', 'finish'], true) && floor($nextPaymentStage['remaining']) >= 1)
+                <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.store', $booking) }}" class="flex flex-wrap items-end gap-4 rounded-lg border border-orange-200 bg-orange-50/50 p-4">
+                    @csrf
+                    <input type="hidden" name="stage" value="{{ $nextPaymentStage['key'] }}">
+                    <div class="min-w-48 flex-1">
+                        <label for="midtrans-amount" class="mb-2 block text-sm font-medium">Bayar via Midtrans · {{ $nextPaymentStage['label'] }}</label>
+                        <input id="midtrans-amount" type="number" name="amount" min="1" max="{{ floor($nextPaymentStage['remaining']) }}" step="1" required value="{{ floor($nextPaymentStage['remaining']) }}" class="w-full rounded-lg border border-zinc-300 px-3 py-2">
+                        <p class="mt-1 text-xs text-zinc-600">Sisa tagihan Rp {{ number_format($nextPaymentStage['remaining'], 0, ',', '.') }}. Pembayaran yang berhasil akan otomatis masuk ke Keuangan.</p>
+                    </div>
+                    <button type="submit" class="rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600">Bayar dengan Midtrans</button>
+                    @error('stage')<p class="basis-full text-sm text-red-600">{{ $message }}</p>@enderror
+                    @error('amount')<p class="basis-full text-sm text-red-600">{{ $message }}</p>@enderror
+                </form>
+            @endif
+
+            @if($pendingPaymentOrder)
+                <div role="status" class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p class="font-semibold">Pembayaran Midtrans sedang menunggu konfirmasi.</p>
+                    <p>Order {{ $pendingPaymentOrder->order_id }} · {{ $pendingPaymentOrder->stage === 'dp' ? 'Pembayaran DP' : 'Biaya Akad' }} · Rp {{ number_format((float) $pendingPaymentOrder->amount, 0, ',', '.') }}</p>
+                    @if($pendingPaymentOrder->redirect_url)
+                        <a href="{{ $pendingPaymentOrder->redirect_url }}" class="inline-flex rounded-lg bg-orange-500 px-4 py-2 font-semibold text-white hover:bg-orange-600">Lanjutkan Pembayaran Midtrans</a>
+                    @else
+                        <p>Konfirmasi transaksi sedang diperiksa. Jangan membuat pembayaran baru untuk tahap ini.</p>
+                    @endif
+                </div>
+            @elseif($nextPaymentStage && $nextPaymentStage['key'] === 'dp' && ! in_array($booking->status, ['cancelled', 'finish'], true))
                 <p class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
                     Pencatatan atau pembaruan nominal DP dilakukan melalui
                     <a href="{{ route('marketing.bookings.edit', $booking) }}" class="font-semibold underline" wire:navigate>Edit Booking</a>.

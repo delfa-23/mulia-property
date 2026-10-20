@@ -9,6 +9,7 @@ class FinanceCashFlow extends Model
 {
     protected $fillable = [
         'property_id',
+        'booking_payment_id',
         'title',
         'direction',
         'status',
@@ -33,5 +34,10 @@ class FinanceCashFlow extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function bookingPayment(): BelongsTo
+    {
+        return $this->belongsTo(BookingPayment::class);
     }
 }

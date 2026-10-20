@@ -10,7 +10,9 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LotController;
 use App\Http\Controllers\Admin\PemberkasanDocumentController as AdminPemberkasanDocumentController;
 use App\Http\Controllers\Admin\PropertyController;
+use App\Http\Controllers\Admin\SitePlanAreaController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\AlertNotificationController;
 use App\Http\Controllers\Finance\FinanceCashPositionController;
 use App\Http\Controllers\GoogleDriveController;
 use App\Http\Controllers\Marketing\BookingController as MarketingBookingController;
@@ -22,8 +24,11 @@ use App\Http\Controllers\Marketing\MarketingLeadCalendarController;
 use App\Http\Controllers\Marketing\MarketingLeadController;
 use App\Http\Controllers\Marketing\MarketingLeadFollowUpController;
 use App\Http\Controllers\Marketing\MarketingLeadReportController;
+use App\Http\Controllers\Marketing\MidtransBookingPaymentController;
+use App\Http\Controllers\Marketing\PaymentController as MarketingPaymentController;
 use App\Http\Controllers\Marketing\SalesController as MarketingSalesController;
 use App\Http\Controllers\Marketing\SitePlanController as MarketingSitePlanController;
+use App\Http\Controllers\Payments\MidtransNotificationController;
 use App\Http\Controllers\Pembangunan\DashboardController as PembangunanDashboardController;
 use App\Http\Controllers\Pembangunan\FacilityProgressController;
 use App\Http\Controllers\Pembangunan\FinanceController as PembangunanFinanceController;
@@ -33,10 +38,13 @@ use App\Http\Controllers\Pemberkasan\AdditionalDocumentController;
 use App\Http\Controllers\Pemberkasan\BookingController as PemberkasanBookingController;
 use App\Http\Controllers\Pemberkasan\DashboardController as PemberkasanDashboardController;
 use App\Http\Controllers\Reports\ProgressReportController;
+use App\Http\Controllers\SitePlanBrowserController;
 use App\Http\Controllers\SitePlanCoordinatesController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
+Route::post('/webhooks/midtrans/notifications', MidtransNotificationController::class)
+    ->name('webhooks.midtrans.notifications');
 
 /*
 |--------------------------------------------------------------------------
@@ -110,9 +118,13 @@ Route::get('/test-pemberkasan', function () {
 ])->name('test.pemberkasan');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
     Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
     Route::get('/alerts/create', [AlertController::class, 'create'])->name('alerts.create');
     Route::post('/alerts', [AlertController::class, 'store'])->name('alerts.store');
+    Route::post('/alerts/{alert}/resolve', [AlertController::class, 'resolve'])->name('alerts.resolve');
+    Route::post('/notifications/alerts/pending-count', [AlertNotificationController::class, 'pendingCount'])
+        ->name('notifications.alerts.pending-count');
 });
 
 Route::get('/admin', [DashboardController::class, 'index'])
@@ -123,6 +135,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
+        Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
         Route::resource('users', UserController::class)
             ->except(['show']);
 
@@ -131,6 +144,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         Route::resource('properties', PropertyController::class)
             ->except(['show']);
+        Route::post('/properties/{property}/site-plan-areas', [SitePlanAreaController::class, 'store'])
+            ->name('properties.site-plan-areas.store');
+        Route::put('/properties/{property}/site-plan-areas/{sitePlanArea}', [SitePlanAreaController::class, 'update'])
+            ->name('properties.site-plan-areas.update');
+        Route::delete('/properties/{property}/site-plan-areas/{sitePlanArea}', [SitePlanAreaController::class, 'destroy'])
+            ->name('properties.site-plan-areas.destroy');
         Route::put('/properties/{property}/lots/{lot}/map-coordinates', [SitePlanCoordinatesController::class, 'update'])
             ->name('properties.lots.map-coordinates.update');
 
@@ -153,6 +172,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->name('property-construction-stages.index');
         Route::post('/properties/{property}/construction-stages', [PropertyController::class, 'storeConstructionStage'])
             ->name('property-construction-stages.store');
+        Route::put('/properties/{property}/construction-stages/{constructionStage}', [PropertyController::class, 'updateConstructionStage'])
+            ->name('property-construction-stages.update');
         Route::delete('/properties/{property}/construction-stages/{constructionStage}', [PropertyController::class, 'destroyConstructionStage'])
             ->name('property-construction-stages.destroy');
 
@@ -162,7 +183,6 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         )->except(['show']);
 
         Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
-        Route::post('/alerts/{alert}/resolve', [AlertController::class, 'resolve'])->name('alerts.resolve');
         Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity-logs.index');
     });
 
@@ -176,6 +196,25 @@ Route::prefix('pembangunan')
     ->group(function () {
         Route::get('/dashboard', [PembangunanDashboardController::class, 'index'])
             ->name('dashboard');
+
+        Route::get('/construction-stages', [PropertyController::class, 'constructionStages'])
+            ->name('property-construction-stages.index');
+        Route::post('/properties/{property}/construction-stages', [PropertyController::class, 'storeConstructionStage'])
+            ->name('property-construction-stages.store');
+        Route::put('/properties/{property}/construction-stages/{constructionStage}', [PropertyController::class, 'updateConstructionStage'])
+            ->name('property-construction-stages.update');
+        Route::delete('/properties/{property}/construction-stages/{constructionStage}', [PropertyController::class, 'destroyConstructionStage'])
+            ->name('property-construction-stages.destroy');
+
+        Route::get(
+            '/properties/{property}/blocks/{block}/lots/{lot}/edit',
+            [LotController::class, 'edit']
+        )->name('properties.blocks.lots.edit');
+
+        Route::put(
+            '/properties/{property}/blocks/{block}/lots/{lot}',
+            [LotController::class, 'update']
+        )->name('properties.blocks.lots.update');
 
         Route::get('/properties', [PropertyOverviewController::class, 'index'])
             ->name('properties.index');
@@ -241,6 +280,7 @@ Route::prefix('keuangan')
         Route::get('/cash-position', [FinanceCashPositionController::class, 'index'])->name('cash-position.index');
         Route::post('/cash-accounts', [FinanceCashPositionController::class, 'storeAccount'])->name('cash-accounts.store');
         Route::put('/cash-accounts/{cashAccount}', [FinanceCashPositionController::class, 'updateAccount'])->name('cash-accounts.update');
+        Route::delete('/cash-accounts/{cashAccount}', [FinanceCashPositionController::class, 'destroyAccount'])->name('cash-accounts.destroy');
         Route::post('/cash-flows', [FinanceCashPositionController::class, 'storeCashFlow'])->name('cash-flows.store');
         Route::delete('/cash-flows/{cashFlow}', [FinanceCashPositionController::class, 'destroyCashFlow'])->name('cash-flows.destroy');
     });
@@ -250,12 +290,10 @@ Route::prefix('marketing')
     ->name('marketing.')
     ->group(function () {
         Route::get('/dashboard', [MarketingDashboardController::class, 'index'])->name('dashboard');
+        Route::get('/payments', [MarketingPaymentController::class, 'index'])->name('payments.index');
+        Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
         Route::get('/properties/{property}/site-plan', [MarketingSitePlanController::class, 'edit'])
             ->name('site-plans.edit');
-        Route::put('/properties/{property}/site-plan', [MarketingSitePlanController::class, 'update'])
-            ->name('site-plans.update');
-        Route::put('/properties/{property}/lots/{lot}/map-coordinates', [SitePlanCoordinatesController::class, 'update'])
-            ->name('site-plans.coordinates.update');
         Route::get('/lots', [MarketingLotController::class, 'index'])->name('lots.index');
         Route::resource('sales', MarketingSalesController::class)->except(['show']);
         Route::resource('leads', MarketingLeadController::class)->except(['show']);
@@ -281,6 +319,8 @@ Route::prefix('marketing')
             ->name('bookings.documents.retry');
         Route::post('/bookings/{booking}/payments', [MarketingBookingController::class, 'storePayment'])
             ->name('bookings.payments.store');
+        Route::post('/bookings/{booking}/payments/midtrans', [MidtransBookingPaymentController::class, 'store'])
+            ->name('bookings.payments.midtrans.store');
     });
 
 Route::prefix('pemberkasan')

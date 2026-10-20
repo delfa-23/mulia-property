@@ -4,11 +4,11 @@
             <p class="text-xs font-bold uppercase tracking-wide text-blue-700">Langkah 3 · Pemetaan posisi</p>
             <h2 class="mt-1 text-lg font-semibold text-gray-900">Tandai Area Kavling</h2>
             <p class="mt-1 max-w-3xl text-sm text-gray-600">
-                Pastikan langkah 2 sudah lengkap. Setiap kavling harus ditandai satu per satu agar semua area bisa diberi warna status yang benar pada dashboard.
+                Tarik kotak pada denah, pilih kavling yang cocok dari pilihan yang muncul, lalu simpan. Tidak perlu muat ulang halaman.
             </p>
         </div>
         <span class="inline-flex w-fit shrink-0 items-center rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-800">
-            {{ $mappedLotCount }} / {{ $lots->count() }} selesai
+            <span data-site-plan-mapped-count>{{ $mappedLotCount }}</span>&nbsp;/&nbsp;{{ $lots->count() }} ditandai
         </span>
     </div>
 
@@ -19,7 +19,11 @@
                 @foreach($blocks as $block)
                     <div class="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 text-sm">
                         <span class="font-medium text-slate-700">Blok {{ $block->name }}</span>
-                        <span class="{{ $block->lots_count > 0 && $mappedLotCountsByBlock->get($block->id, 0) === $block->lots_count ? 'text-emerald-700' : 'text-slate-500' }}">
+                        <span
+                            data-site-plan-block-count="{{ $block->id }}"
+                            data-block-total="{{ $block->lots_count }}"
+                            class="{{ $block->lots_count > 0 && $mappedLotCountsByBlock->get($block->id, 0) === $block->lots_count ? 'text-emerald-700' : 'text-slate-500' }}"
+                        >
                             {{ $mappedLotCountsByBlock->get($block->id, 0) }} / {{ $block->lots_count }} ditandai
                         </span>
                     </div>
@@ -59,48 +63,14 @@
             @endif
         </div>
     @else
-        <div class="grid gap-3 md:grid-cols-3">
-            <div class="rounded-lg border border-slate-200 p-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">1. Pilih kavling</p>
-                <p class="mt-1 text-sm text-slate-700">Pilih nomor kavling dari daftar. Nama blok ditampilkan bersama nomor kavling.</p>
-            </div>
-            <div class="rounded-lg border border-slate-200 p-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">2. Tarik area di denah</p>
-                <p class="mt-1 text-sm text-slate-700">Tekan dan tarik dari sudut kiri atas sampai sudut kanan bawah kavling. Kotak oranye menunjukkan area yang sedang dipilih.</p>
-            </div>
-            <div class="rounded-lg border border-slate-200 p-3">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">3. Simpan dan ulangi</p>
-                <p class="mt-1 text-sm text-slate-700">Tekan Simpan Area Kavling. Pilih nomor berikutnya dan ulangi sampai penghitung menunjukkan semua selesai.</p>
-            </div>
-        </div>
-
         <form
             method="POST"
-            action="{{ route($coordinateRoute, ['property' => $property, 'lot' => old('lot_id', $lots->first()->id)]) }}"
+            action="{{ route($coordinateRoute, ['property' => $property, 'lot' => $lots->first()]) }}"
             data-site-plan-editor
             class="space-y-4"
         >
             @csrf
             @method('PUT')
-
-            <div class="max-w-sm">
-                <label for="site-plan-lot" class="mb-1 block text-sm font-medium text-gray-700">Kavling yang ditandai</label>
-                <select id="site-plan-lot" name="lot_id" data-site-plan-lot-select class="w-full rounded-lg border-gray-300">
-                    @foreach($lots as $lot)
-                        <option
-                            value="{{ $lot->id }}"
-                            data-url="{{ route($coordinateRoute, ['property' => $property, 'lot' => $lot]) }}"
-                            data-x="{{ $lot->map_coordinates['x'] ?? '' }}"
-                            data-y="{{ $lot->map_coordinates['y'] ?? '' }}"
-                            data-width="{{ $lot->map_coordinates['width'] ?? '' }}"
-                            data-height="{{ $lot->map_coordinates['height'] ?? '' }}"
-                            @selected((string) old('lot_id', $lots->first()->id) === (string) $lot->id)
-                        >
-                            {{ $lot->block->name }}/{{ $lot->lot_number }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
 
             <input type="hidden" name="coordinates[x]" data-site-plan-coordinate="x" value="{{ old('coordinates.x') }}">
             <input type="hidden" name="coordinates[y]" data-site-plan-coordinate="y" value="{{ old('coordinates.y') }}">
@@ -118,22 +88,45 @@
                     @foreach($lots as $lot)
                         @if(is_array($lot->map_coordinates))
                             <div
+                                data-site-plan-mapped-lot="{{ $lot->id }}"
                                 aria-hidden="true"
                                 class="pointer-events-none absolute border border-blue-500 bg-blue-500/20"
                                 style="left: {{ $lot->map_coordinates['x'] }}%; top: {{ $lot->map_coordinates['y'] }}%; width: {{ $lot->map_coordinates['width'] }}%; height: {{ $lot->map_coordinates['height'] }}%;"
-                            >
-                                <span class="block overflow-hidden text-ellipsis whitespace-nowrap bg-blue-700/80 px-0.5 text-[9px] font-bold text-white">
-                                    {{ $lot->block->name }}/{{ $lot->lot_number }}
-                                </span>
-                            </div>
+                            ></div>
                         @endif
                     @endforeach
                     <div data-site-plan-draft hidden aria-hidden="true" class="pointer-events-none absolute border-2 border-dashed border-orange-600 bg-orange-500/30"></div>
                 </div>
             </div>
 
+            <div data-site-plan-lot-picker hidden class="max-w-xl rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <label for="site-plan-lot" class="mb-1 block text-sm font-semibold text-gray-800">Kotak ini untuk kavling yang mana?</label>
+                <p class="mb-2 text-xs text-gray-600">Pilih kavling untuk kotak oranye, lalu simpan. Tidak perlu muat ulang halaman.</p>
+                <select id="site-plan-lot" name="lot_id" data-site-plan-lot-select class="w-full rounded-lg border-gray-300 bg-white">
+                    <option value="">Pilih kavling…</option>
+                    @foreach($blocks as $block)
+                        <optgroup label="Blok {{ $block->name }}">
+                            @foreach($lots->where('block_id', $block->id) as $lot)
+                                <option
+                                    value="{{ $lot->id }}"
+                                    data-url="{{ route($coordinateRoute, ['property' => $property, 'lot' => $lot]) }}"
+                                    data-block-id="{{ $lot->block_id }}"
+                                    data-label="{{ $lot->block->name }}/{{ $lot->lot_number }}"
+                                    data-x="{{ $lot->map_coordinates['x'] ?? '' }}"
+                                    data-y="{{ $lot->map_coordinates['y'] ?? '' }}"
+                                    data-width="{{ $lot->map_coordinates['width'] ?? '' }}"
+                                    data-height="{{ $lot->map_coordinates['height'] ?? '' }}"
+                                >
+                                    {{ $lot->lot_number }}{{ is_array($lot->map_coordinates) ? ' · sudah ditandai' : '' }}
+                                </option>
+                            @endforeach
+                        </optgroup>
+                    @endforeach
+                </select>
+            </div>
+
             <div class="flex flex-wrap items-center gap-3">
-                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                <button type="submit" data-site-plan-save disabled class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                     Simpan Area Kavling
                 </button>
                 <span data-site-plan-draw-status class="text-sm text-gray-500">Tarik pada denah untuk memilih area.</span>

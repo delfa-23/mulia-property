@@ -120,7 +120,7 @@ it('prevents a marketing user from viewing or logging activity for another assig
     $this->assertDatabaseCount('marketing_lead_calls', 0);
 });
 
-it('counts unique leads rather than duplicate bookings in CRM conversion rates', function () {
+it('counts unique leads for prospect conversion and bookings for akad conversion', function () {
     $this->travelTo(Carbon::parse('2026-10-15 12:00:00'));
     $user = createCrmActivityTestUser();
     $property = Property::create(['name' => 'Perumahan Laporan']);
@@ -137,16 +137,21 @@ it('counts unique leads rather than duplicate bookings in CRM conversion rates',
 
     $response = $this->actingAs($user)
         ->get(route('marketing.reports.crm', ['from' => '2026-10-14', 'to' => '2026-10-15']))
-        ->assertSee('Rumus metrik');
+        ->assertDontSee('Rumus metrik')
+        ->assertDontSee('Prospek berdasarkan kategori')
+        ->assertDontSee('Konversi prospek → akad')
+        ->assertSee('Konversi prospek → booking')
+        ->assertSee('Konversi booking → akad')
+        ->assertSee('Sumber: Transaksi booking terkait prospek')
+        ->assertSee('Status booking dari proses Pemberkasan');
 
     expect($response->viewData('metrics'))->toMatchArray([
         'leads' => 2,
         'bookings' => 2,
         'akad_bookings' => 2,
         'booked_leads' => 1,
-        'akad_leads' => 1,
         'lead_to_booking_rate' => 50.0,
-        'lead_to_akad_rate' => 50.0,
+        'booking_to_akad_rate' => 100.0,
     ]);
 
     $this->assertModelExists($leadWithoutBooking);

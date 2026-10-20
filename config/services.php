@@ -45,4 +45,9 @@ return [
         'shared_drive_id' => env('GOOGLE_DRIVE_SHARED_DRIVE_ID'),
     ],
 
+    'midtrans' => [
+        'server_key' => env('MIDTRANS_SERVER_KEY'),
+        'is_production' => env('MIDTRANS_IS_PRODUCTION', false),
+    ],
+
 ];

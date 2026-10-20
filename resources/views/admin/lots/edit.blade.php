@@ -4,7 +4,7 @@
 
         <div>
             <a
-                href="{{ route($routePrefix.'.blocks.lots.index', [$property, $block]) }}"
+                href="{{ $backUrl ?? route($routePrefix.'.blocks.lots.index', [$property, $block]) }}"
                 class="text-sm font-medium text-gray-500 hover:text-gray-700"
             >
                 ← Kembali ke Kavling
@@ -23,7 +23,8 @@
 
             <form
                 method="POST"
-                action="{{ route($routePrefix.'.blocks.lots.update', [$property, $block, $lot]) }}"
+                action="{{ $updateUrl ?? route($routePrefix.'.blocks.lots.update', [$property, $block, $lot]) }}"
+                enctype="multipart/form-data"
                 class="space-y-5"
             >
                 @csrf
@@ -74,6 +75,39 @@
                     @error('house_price')
                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                     @enderror
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Foto Kavling</label>
+                    @if($lot->imageGallery())
+                        <div class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            @foreach($lot->imageGallery() as $photo)
+                                <div data-lot-saved-image class="relative">
+                                    <img src="{{ $photo['url'] }}" alt="Foto {{ $lot->lot_number }}" class="aspect-video w-full rounded-lg border border-gray-200 object-cover">
+                                    <input type="checkbox" name="remove_images[]" value="{{ $photo['path'] }}" data-remove-lot-saved-image hidden>
+                                    <button type="button" data-toggle-lot-saved-image class="absolute right-2 top-2 rounded-full bg-white px-2 py-1 text-sm font-bold shadow" aria-label="Hapus foto">-</button>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                    <div data-lot-image-inputs class="space-y-2">
+                        <div data-lot-image-field class="flex gap-2">
+                            <input
+                                type="file"
+                                name="images[]"
+                                accept="image/jpeg,image/png,image/webp"
+                                class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            >
+                            <button type="button" data-remove-lot-image-field class="rounded-lg border border-gray-300 px-3 text-lg" aria-label="Hapus pilihan foto">-</button>
+                        </div>
+                    </div>
+                    <button type="button" data-add-lot-image-field class="mt-2 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium">+ Tambah foto</button>
+                    <p class="mt-1 text-xs text-gray-500">JPG, PNG, atau WebP; maksimal 10 MB per foto.</p>
+                    @foreach($errors->get('images.*') as $imageErrors)
+                        @foreach($imageErrors as $message)
+                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                        @endforeach
+                    @endforeach
                 </div>
 
                 <div>
@@ -133,7 +167,7 @@
                 <div class="flex justify-end gap-3 border-t border-gray-100 pt-5">
 
                     <a
-                        href="{{ route($routePrefix.'.blocks.lots.index', [$property, $block]) }}"
+                        href="{{ $backUrl ?? route($routePrefix.'.blocks.lots.index', [$property, $block]) }}"
                         class="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
                         Batal

@@ -7,6 +7,7 @@ use App\Models\Alert;
 use App\Models\Booking;
 use App\Models\BookingHistory;
 use App\Models\Lot;
+use App\Services\AlertNotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -16,7 +17,7 @@ class ExpireBookings extends Command
 
     protected $description = 'Cancel bookings whose blocking deadline has passed';
 
-    public function handle(): int
+    public function handle(AlertNotificationService $alertNotifications): int
     {
         $expiredCount = 0;
 
@@ -24,11 +25,12 @@ class ExpireBookings extends Command
             ->where('status', 'booking')
             ->whereNotNull('blocking_until')
             ->where('blocking_until', '<=', now())
+            ->whereDoesntHave('paymentOrders', fn ($query) => $query->where('status', 'pending'))
             ->orderBy('id')
             ->select('id')
-            ->chunkById(100, function ($bookings) use (&$expiredCount): void {
+            ->chunkById(100, function ($bookings) use (&$expiredCount, $alertNotifications): void {
                 foreach ($bookings as $candidate) {
-                    $expired = DB::transaction(function () use ($candidate): bool {
+                    $expired = DB::transaction(function () use ($candidate, $alertNotifications): bool {
                         $booking = Booking::query()
                             ->lockForUpdate()
                             ->find($candidate->id);
@@ -36,7 +38,8 @@ class ExpireBookings extends Command
                         if (
                             ! $booking ||
                             $booking->status !== 'booking' ||
-                            ! ($booking->blocking_until?->lessThanOrEqualTo(now()) ?? false)
+                            ! ($booking->blocking_until?->lessThanOrEqualTo(now()) ?? false) ||
+                            $booking->paymentOrders()->where('status', 'pending')->exists()
                         ) {
                             return false;
                         }
@@ -53,13 +56,14 @@ class ExpireBookings extends Command
                             'changed_at' => now(),
                         ]);
 
-                        Alert::create([
+                        $alert = Alert::create([
                             'lot_id' => $booking->lot_id,
                             'type' => 'booking_expired',
                             'title' => 'Booking otomatis dibatalkan',
                             'message' => 'Booking untuk '.$booking->customer()->value('name').' dibatalkan otomatis karena batas booking terlewati.',
                             'severity' => 'high',
                         ]);
+                        $alertNotifications->notifyReceived($alert);
 
                         ActivityLog::create([
                             'action' => 'booking.auto_cancelled',

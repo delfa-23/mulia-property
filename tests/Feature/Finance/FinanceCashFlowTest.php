@@ -133,8 +133,10 @@ it('rejects a month that is not available in the finance history', function () {
 });
 
 it('updates one finance cash account balance', function () {
+    $this->travelTo(Carbon::parse('2026-10-20 14:30:00'));
     $user = financeCashFlowUser();
     $account = FinanceCashAccount::query()->where('account_key', 'bank_bsi')->firstOrFail();
+    $account->update(['balance' => 1000000]);
 
     $this->actingAs($user)
         ->put(route('keuangan.cash-accounts.update', $account), ['balance' => '1250000.50'])
@@ -144,6 +146,41 @@ it('updates one finance cash account balance', function () {
 
     expect((float) $account->balance)->toBe(1250000.5)
         ->and($account->updated_by)->toBe($user->id);
+
+    $this->assertDatabaseHas('finance_cash_account_balance_histories', [
+        'cash_account_id' => $account->id,
+        'account_name' => 'Bank BSI',
+        'previous_balance' => '1000000.00',
+        'new_balance' => '1250000.50',
+        'changed_by' => $user->id,
+        'created_at' => '2026-10-20 14:30:00',
+    ]);
+
+    $this->actingAs($user)
+        ->put(route('keuangan.cash-accounts.update', $account), ['balance' => '1250000.50'])
+        ->assertRedirect(route('keuangan.cash-position.index'));
+
+    $this->assertDatabaseCount('finance_cash_account_balance_histories', 1);
+});
+
+it('renders balance changes with the account, before and after amounts, and timestamp', function () {
+    $this->travelTo(Carbon::parse('2026-10-20 14:30:00'));
+    $user = financeCashFlowUser();
+    $account = FinanceCashAccount::query()->where('account_key', 'bank_bsn')->firstOrFail();
+    $account->update(['balance' => 250000]);
+
+    $this->actingAs($user)
+        ->put(route('keuangan.cash-accounts.update', $account), ['balance' => '750000'])
+        ->assertRedirect(route('keuangan.cash-position.index'));
+
+    $this->actingAs($user)
+        ->get(route('keuangan.cash-position.index'))
+        ->assertSee('Riwayat Perubahan Saldo')
+        ->assertSee('Bank BSN')
+        ->assertSee('Rp 250.000')
+        ->assertSee('Rp 750.000')
+        ->assertSee('20/10/2026 14:30')
+        ->assertSee($user->name);
 });
 
 it('rejects a negative finance cash account balance', function () {
@@ -156,6 +193,7 @@ it('rejects a negative finance cash account balance', function () {
         ->assertSessionHasErrors('balance');
 
     expect((float) $account->fresh()->balance)->toBe(750000.0);
+    $this->assertDatabaseCount('finance_cash_account_balance_histories', 0);
 });
 
 it('creates and displays an escaped finance cash flow plan', function () {

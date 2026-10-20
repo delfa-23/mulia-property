@@ -35,7 +35,7 @@
         <select id="booking-property" name="property_id" data-property-select required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
             <option value="">Pilih Perumahan</option>
             @foreach($properties as $property)
-                <option value="{{ $property->id }}" @selected(old('property_id', $booking?->lot?->block?->property_id) == $property->id)>{{ $property->name }}</option>
+                <option value="{{ $property->id }}" @selected(old('property_id', request('property_id', $booking?->lot?->block?->property_id)) == $property->id)>{{ $property->name }}</option>
             @endforeach
         </select>
         @error('property_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -53,7 +53,7 @@
         >
             <option value="">Pilih kavling</option>
             @foreach($lots as $lot)
-                <option value="{{ $lot->id }}" data-property-id="{{ $lot->block->property_id }}" data-price="{{ $lot->house_price }}" @selected(old('lot_id', $booking?->lot_id) == $lot->id)>
+                <option value="{{ $lot->id }}" data-property-id="{{ $lot->block->property_id }}" data-price="{{ $lot->house_price }}" @selected(old('lot_id', request('lot_id', $booking?->lot_id)) == $lot->id)>
                     {{ $lot->block->name }} / {{ $lot->lot_number }} — {{ ucfirst($lot->status) }}
                 </option>
             @endforeach

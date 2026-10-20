@@ -62,9 +62,28 @@ class DashboardController extends Controller
             ->get();
         $sitePlanLots = $propertyId
             ? Lot::query()
-                ->with('block')
+                ->with([
+                    'block',
+                    'bookings' => fn ($query) => $query
+                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                        ->with(['customer', 'sales'])
+                        ->latest('id'),
+                ])
                 ->whereHas('block', fn ($query) => $query->where('property_id', $propertyId))
                 ->orderBy('lot_number')
+                ->get()
+            : collect();
+        $sitePlanAreas = $selectedProperty
+            ? $selectedProperty->sitePlanAreas()
+                ->where('site_plan_path', $selectedProperty->site_plan_path)
+                ->with([
+                    'lot.block',
+                    'lot.bookings' => fn ($query) => $query
+                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                        ->with(['customer', 'sales'])
+                        ->latest('id'),
+                ])
+                ->orderBy('id')
                 ->get()
             : collect();
 
@@ -280,6 +299,7 @@ class DashboardController extends Controller
             'selectedProperty',
             'lots',
             'sitePlanLots',
+            'sitePlanAreas',
             'propertyId',
             'blockId',
             'lotId',

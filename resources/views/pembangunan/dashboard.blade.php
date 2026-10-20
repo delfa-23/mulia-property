@@ -1,32 +1,25 @@
 <x-layouts::app :title="'Dashboard Pembangunan'">
-
     <div class="space-y-6">
-
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-                Dashboard Pembangunan
-            </h1>
-
-            <p class="mt-1 text-sm text-gray-500 dark:text-zinc-400">
-                Monitoring progress pembangunan seluruh project perumahan.
-            </p>
-        </div>
-
-        <div class="grid gap-3 sm:grid-cols-2">
-            <a href="{{ route('pembangunan.progress.index') }}" wire:navigate class="rounded-xl border border-blue-200 bg-blue-50 p-4 transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:hover:bg-blue-950/70">
-                <span class="block text-sm font-semibold text-blue-900 dark:text-blue-200">Progress Kavling</span>
-                <span class="mt-1 block text-sm text-blue-700 dark:text-blue-300">Tambah, edit, dan hapus laporan progress per tahap →</span>
-            </a>
-            <a href="{{ route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-xl border border-blue-200 bg-blue-50 p-4 transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:hover:bg-blue-950/70">
-                <span class="block text-sm font-semibold text-blue-900 dark:text-blue-200">Progress Fasilitas Umum</span>
-                <span class="mt-1 block text-sm text-blue-700 dark:text-blue-300">Tambah, edit, dan hapus laporan progress fasilitas →</span>
-            </a>
-        </div>
-
-        <form method="GET" action="{{ route('pembangunan.dashboard') }}" class="grid gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-3 dark:border-zinc-700 dark:bg-zinc-900">
+        <header class="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-slate-950 px-6 py-5 text-white shadow-sm">
             <div>
-                <label for="property_id" class="mb-1 block text-sm font-medium text-gray-700 dark:text-zinc-300">Perumahan</label>
-                <select id="property_id" name="property_id" data-property-select class="w-full rounded-lg border-gray-300 dark:border-zinc-700 dark:bg-zinc-800">
+                <p class="text-xs font-bold uppercase tracking-[0.18em] text-orange-300">Ringkasan Operasional</p>
+                <h1 class="mt-1 text-2xl font-bold !text-white">Dashboard Pembangunan</h1>
+                <p class="mt-1 text-sm text-slate-300">Pantau anggaran, progress, dan status serah terima perumahan.</p>
+            </div>
+            <nav class="flex flex-wrap gap-2">
+                <a href="{{ auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.progress.index') }}" wire:navigate class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200">
+                    Tahapan Pembangunan
+                </a>
+                <a href="{{ auth()->user()->role === 'admin' ? route('admin.common-facilities.index') : route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
+                    Fasilitas Umum
+                </a>
+            </nav>
+        </header>
+
+        <form method="GET" action="{{ route('pembangunan.dashboard') }}" class="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto] dark:border-zinc-700 dark:bg-zinc-900">
+            <div>
+                <label for="property_id" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-zinc-200">Perumahan</label>
+                <select id="property_id" name="property_id" data-property-select class="w-full rounded-lg border-slate-300 bg-white text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
                     <option value="">Semua Perumahan</option>
                     @foreach($properties as $property)
                         <option value="{{ $property->id }}" @selected($propertyId === $property->id)>{{ $property->name }}</option>
@@ -34,8 +27,8 @@
                 </select>
             </div>
             <div>
-                <label for="lot_id" class="mb-1 block text-sm font-medium text-gray-700 dark:text-zinc-300">Kavling</label>
-                <select id="lot_id" name="lot_id" data-lot-select disabled class="w-full rounded-lg border-gray-300 dark:border-zinc-700 dark:bg-zinc-800">
+                <label for="lot_id" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-zinc-200">Kavling</label>
+                <select id="lot_id" name="lot_id" data-lot-select disabled class="w-full rounded-lg border-slate-300 bg-white text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:disabled:bg-zinc-800">
                     <option value="">Semua Kavling</option>
                     @foreach($lots as $lot)
                         <option value="{{ $lot->id }}" data-property-id="{{ $lot->block->property_id }}" @selected($lotId === $lot->id)>{{ $lot->block->name }}/{{ $lot->lot_number }}</option>
@@ -43,169 +36,143 @@
                 </select>
             </div>
             <div class="flex items-end gap-2">
-                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Terapkan</button>
+                <button type="submit" class="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700">Terapkan</button>
                 @if($propertyId || $lotId)
-                    <a href="{{ route('pembangunan.dashboard') }}" class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-300">Reset</a>
+                    <a href="{{ route('pembangunan.dashboard') }}" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Reset</a>
                 @endif
             </div>
         </form>
 
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <p class="text-sm text-gray-500">Project Perumahan</p>
-                <p class="mt-2 text-3xl font-bold">
-                    {{ $stats['total_properties'] }}
-                </p>
+        <section aria-labelledby="construction-finance-heading" class="overflow-hidden rounded-2xl bg-slate-900 text-white shadow-sm">
+            <div class="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-orange-300">Keuangan Pembangunan</p>
+                    <h2 id="construction-finance-heading" class="mt-1 text-lg font-bold !text-white">Ringkasan Anggaran</h2>
+                </div>
+                <span class="text-sm text-slate-300">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
             </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <p class="text-sm text-gray-500">Total Block</p>
-                <p class="mt-2 text-3xl font-bold">
-                    {{ $stats['total_blocks'] }}
-                </p>
+            <div class="grid divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                <div class="px-5 py-5 sm:px-6">
+                    <p class="text-sm font-medium text-slate-300">RAB Pembangunan</p>
+                    <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalBudget, 0, ',', '.') }}</p>
+                </div>
+                <div class="px-5 py-5 sm:px-6">
+                    <p class="text-sm font-medium text-slate-300">Total Pengeluaran</p>
+                    <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalExpense, 0, ',', '.') }}</p>
+                </div>
+                <div class="px-5 py-5 sm:px-6">
+                    <p class="text-sm font-medium text-slate-300">Deviasi Anggaran <span class="font-normal text-slate-400">(RAB - pengeluaran)</span></p>
+                    <p class="mt-2 text-2xl font-bold tracking-tight {{ $totalConstructionDeviation >= 0 ? 'text-emerald-300' : 'text-red-300' }}">
+                        Rp {{ number_format((float) $totalConstructionDeviation, 0, ',', '.') }}
+                    </p>
+                </div>
             </div>
+        </section>
 
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <p class="text-sm text-gray-500">Total Kavling</p>
-                <p class="mt-2 text-3xl font-bold">
-                    {{ $stats['total_lots'] }}
-                </p>
-            </div>
+        <section aria-label="Ringkasan progress pembangunan" class="grid gap-3 sm:grid-cols-3">
+            <article class="rounded-xl border border-slate-200 border-l-4 border-l-blue-600 bg-white p-5 shadow-sm dark:border-zinc-700 dark:border-l-blue-500 dark:bg-zinc-900">
+                <p class="text-sm font-semibold text-slate-600 dark:text-zinc-300">Total Kavling</p>
+                <p class="mt-2 text-3xl font-bold text-slate-950 dark:text-white">{{ number_format($stats['total_lots']) }}</p>
+            </article>
+            <article class="rounded-xl border border-slate-200 border-l-4 border-l-orange-500 bg-white p-5 shadow-sm dark:border-zinc-700 dark:border-l-orange-400 dark:bg-zinc-900">
+                <p class="text-sm font-semibold text-slate-600 dark:text-zinc-300">Rata-rata Progress Fisik</p>
+                <p class="mt-2 text-3xl font-bold text-slate-950 dark:text-white">{{ number_format($stats['physical_progress'], 2) }}<span class="ml-1 text-lg text-slate-500">%</span></p>
+            </article>
+            <article class="rounded-xl border border-slate-200 border-l-4 border-l-emerald-600 bg-white p-5 shadow-sm dark:border-zinc-700 dark:border-l-emerald-500 dark:bg-zinc-900">
+                <p class="text-sm font-semibold text-slate-600 dark:text-zinc-300">Serah Terima Rumah</p>
+                <p class="mt-2 text-3xl font-bold text-emerald-700 dark:text-emerald-400">{{ number_format($stats['finish_lots']) }}</p>
+            </article>
+        </section>
 
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <p class="text-sm text-gray-500">Kavling Finish</p>
-                <p class="mt-2 text-3xl font-bold text-green-600">
-                    {{ $stats['finish_lots'] }}
-                </p>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <p class="text-sm text-gray-500">Progress Fisik</p>
-                <p class="mt-2 text-3xl font-bold text-blue-600">{{ number_format($stats['physical_progress'], 2) }}%</p>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <p class="text-sm text-gray-500">Progress Fasilitas</p>
-                <p class="mt-2 text-3xl font-bold text-blue-600">{{ number_format($stats['facility_progress'], 2) }}%</p>
-            </div>
-
-        </div>
-
-        <div class="grid gap-5 xl:grid-cols-3">
-            <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 class="text-lg font-bold text-[#10233D]">Sebaran Status Kavling</h2>
-                <p class="mt-1 text-sm text-slate-500">Status unit pada filter aktif.</p>
-                @php($lotStatusGradientStops = $lotStatusChart->filter(fn ($status) => $status['value'] > 0)->map(fn ($status) => $status['color'].' '.$status['percent'].'%')->implode(', '))
+        <section class="grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <h2 class="text-lg font-bold text-slate-950 dark:text-white">Status Kavling</h2>
+                <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">Proses berkas, SP3, dan akad mengikuti status booking. Serah terima dihitung setelah seluruh tahap aktif selesai.</p>
+                @php($lotStatusGradientStops = $lotStatusChart->filter(fn ($status) => $status['value'] > 0)->map(fn ($status) => $status['color'].' '.$status['start_percent'].'% '.$status['end_percent'].'%')->implode(', '))
                 <div role="img" aria-label="Grafik status {{ $lotStatusTotal }} kavling" class="mx-auto mt-5 flex size-40 items-center justify-center rounded-full p-3" style="background: conic-gradient(from -90deg, {{ $lotStatusGradientStops !== '' ? $lotStatusGradientStops : '#e2e8f0 0% 100%' }})">
-                    <div class="flex size-full flex-col items-center justify-center rounded-full bg-white">
-                        <span class="text-3xl font-black text-[#10233D]">{{ $lotStatusTotal }}</span>
-                        <span class="text-xs font-semibold text-slate-500">Total unit</span>
+                    <div class="flex size-full flex-col items-center justify-center rounded-full bg-white dark:bg-zinc-900">
+                        <span class="text-3xl font-black text-slate-950 dark:text-white">{{ $lotStatusTotal }}</span>
+                        <span class="text-xs font-semibold text-slate-600 dark:text-zinc-400">Total unit</span>
                     </div>
                 </div>
-                <div class="mt-4 space-y-2">
+                <div class="mt-5 space-y-2.5">
                     @foreach($lotStatusChart as $status)
                         <div class="flex items-center justify-between gap-3 text-sm">
-                            <span class="flex min-w-0 items-center gap-2 text-slate-600"><span class="size-2.5 shrink-0 rounded-sm" style="background-color: {{ $status['color'] }}"></span><span class="truncate">{{ $status['label'] }}</span></span>
-                            <span class="shrink-0 font-bold text-[#10233D]">{{ $status['value'] }} <span class="font-medium text-slate-400">({{ number_format($status['percent'], 1) }}%)</span></span>
+                            <span class="flex min-w-0 items-center gap-2 font-medium text-slate-700 dark:text-zinc-300">
+                                <span class="size-2.5 shrink-0 rounded-sm" style="background-color: {{ $status['color'] }}"></span>
+                                <span class="truncate">{{ $status['label'] }}</span>
+                            </span>
+                            <span class="shrink-0 font-bold text-slate-950 dark:text-white">{{ $status['value'] }} <span class="font-medium text-slate-500 dark:text-zinc-400">({{ number_format($status['percent'], 1) }}%)</span></span>
                         </div>
                     @endforeach
                 </div>
-            </section>
-
-            <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h2 class="text-lg font-bold text-[#10233D]">Tren Progress Fisik</h2>
-                        <p class="mt-1 text-sm text-slate-500">Rata-rata nilai update riwayat yang dicatat setiap bulan.</p>
+            </div>
+            <div class="grid gap-5 sm:grid-cols-2">
+                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-950 dark:text-white">Tahapan Pembangunan</h2>
+                            <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">Rata-rata progress per tahapan.</p>
+                        </div>
+                        <a href="{{ auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.progress.index') }}" class="shrink-0 text-xs font-semibold text-orange-700 hover:underline dark:text-orange-300">Buka</a>
                     </div>
-                    <span class="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-[#EB5120]">{{ $stats['physical_progress'] }}% rata-rata saat ini</span>
-                </div>
-                @if($monthlyPhysicalProgressChart->sum('updates') > 0)
-                    <div role="img" aria-label="Grafik tren progress fisik enam bulan" class="mt-5 grid h-52 grid-cols-6 items-end gap-2 border-b border-slate-200 px-1 sm:gap-4">
-                        @foreach($monthlyPhysicalProgressChart as $month)
-                            @php($progressHeight = $month['progress'] !== null ? max(4, min(100, $month['progress'])) : 0)
-                            <div class="flex h-full min-w-0 flex-col items-center justify-end gap-2">
-                                <span class="text-[10px] font-bold text-[#10233D] sm:text-xs">{{ $month['progress'] !== null ? number_format($month['progress'], 1).'%' : '—' }}</span>
-                                <div class="flex h-36 w-full items-end justify-center">
-                                    <div class="w-1/2 rounded-t-md bg-[#EB5120]" style="height: {{ $progressHeight }}%" title="{{ $month['label'] }}: {{ $month['updates'] }} update"></div>
+                    @if($stageProgress->isNotEmpty())
+                        <div class="mt-5 space-y-4">
+                            @foreach($stageProgress as $stage)
+                                <div>
+                                    <div class="mb-1.5 flex justify-between gap-3 text-sm">
+                                        <span class="truncate font-semibold text-slate-700 dark:text-zinc-300">{{ $stage['name'] }}</span>
+                                        <span class="shrink-0 font-bold text-slate-950 dark:text-white">{{ number_format($stage['progress'], 1) }}%</span>
+                                    </div>
+                                    <div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
+                                        <div class="h-full rounded-full bg-orange-600" style="width: {{ min(100, max(0, $stage['progress'])) }}%"></div>
+                                    </div>
                                 </div>
-                                <span class="pb-2 text-center text-[10px] font-semibold text-slate-500 sm:text-xs">{{ $month['label'] }}</span>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <p class="mt-5 flex h-52 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 text-center text-sm text-slate-500">Belum ada riwayat progress enam bulan terakhir.</p>
-                @endif
-            </section>
-        </div>
-
-        <div class="grid gap-5 lg:grid-cols-2">
-            <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 class="text-lg font-bold text-[#10233D]">Rata-rata per Tahap</h2>
-                <p class="mt-1 text-sm text-slate-500">Progress terkini untuk setiap tahapan pembangunan.</p>
-                @if($stageProgress->isNotEmpty())
-                    <div class="mt-5 space-y-4">
-                        @foreach($stageProgress as $stage)
-                            <div>
-                                <div class="mb-1.5 flex justify-between gap-3 text-sm"><span class="truncate font-semibold text-slate-600">{{ $stage['name'] }}</span><span class="shrink-0 font-bold text-[#10233D]">{{ number_format($stage['progress'], 2) }}%</span></div>
-                                <div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-[#10233D]" style="width: {{ min(100, max(0, $stage['progress'])) }}%"></div></div>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <p class="mt-5 rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Belum ada progress per tahapan untuk filter ini.</p>
-                @endif
-            </section>
-
-            <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 class="text-lg font-bold text-[#10233D]">Progress Fasilitas Umum</h2>
-                <p class="mt-1 text-sm text-slate-500">Fasilitas dengan progress tertinggi pada project terpilih.</p>
-                @if($facilityProgressChart->isNotEmpty())
-                    <div class="mt-5 space-y-4">
-                        @foreach($facilityProgressChart as $facility)
-                            <div>
-                                <div class="mb-1.5 flex justify-between gap-3 text-sm"><span class="min-w-0 truncate font-semibold text-slate-600">{{ $facility['name'] }}<span class="ml-1 font-normal text-slate-400">{{ $facility['property'] }}</span></span><span class="shrink-0 font-bold text-[#EB5120]">{{ number_format($facility['progress'], 1) }}%</span></div>
-                                <div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-[#EB5120]" style="width: {{ min(100, max(0, $facility['progress'])) }}%"></div></div>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <p class="mt-5 rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Belum ada data fasilitas untuk filter ini.</p>
-                @endif
-            </section>
-        </div>
-
-        <div class="grid gap-6 lg:grid-cols-2">
-            <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <h2 class="text-lg font-semibold">Update Progress Terbaru</h2>
-                <div class="mt-4 divide-y divide-zinc-200 dark:divide-zinc-700">
-                    @forelse($latestProgressUpdates as $progress)
-                        <div class="flex items-center justify-between gap-4 py-3 text-sm">
-                            <div><p class="font-medium">{{ $progress->lot?->block?->property?->name }} / {{ $progress->lot?->lot_number }}</p><p class="text-zinc-500">{{ $progress->stage?->name }} · {{ $progress->updatedBy?->name ?? '-' }}</p></div>
-                            <span class="font-semibold text-blue-600">{{ number_format((float) $progress->progress, 2) }}%</span>
+                            @endforeach
                         </div>
-                    @empty
-                        <p class="py-4 text-sm text-zinc-500">Belum ada update progress.</p>
-                    @endforelse
-                </div>
-            </section>
-
-            <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <h2 class="text-lg font-semibold">Update Fasilitas Terbaru</h2>
-                <div class="mt-4 divide-y divide-zinc-200 dark:divide-zinc-700">
-                    @forelse($latestFacilityUpdates as $facility)
-                        <div class="flex items-center justify-between gap-4 py-3 text-sm">
-                            <div><p class="font-medium">{{ $facility->name }}</p><p class="text-zinc-500">{{ $facility->property?->name }}</p></div>
-                            <span class="font-semibold text-blue-600">{{ number_format($facility->progress, 2) }}%</span>
+                    @else
+                        <p class="mt-5 rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">Belum ada progress tahapan untuk filter ini.</p>
+                    @endif
+                </section>
+                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-950 dark:text-white">Fasilitas Umum</h2>
+                            <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">Progress fasilitas project.</p>
                         </div>
-                    @empty
-                        <p class="py-4 text-sm text-zinc-500">Belum ada update fasilitas.</p>
-                    @endforelse
-                </div>
-            </section>
-        </div>
+                        <a href="{{ auth()->user()->role === 'admin' ? route('admin.common-facilities.index') : route('pembangunan.progress.facilities.index') }}" class="shrink-0 text-xs font-semibold text-orange-700 hover:underline dark:text-orange-300">Buka</a>
+                    </div>
+                    @if($facilityProgressChart->isNotEmpty())
+                        <div class="mt-5 space-y-4">
+                            @foreach($facilityProgressChart as $facility)
+                                <div>
+                                    <div class="mb-1.5 flex justify-between gap-3 text-sm">
+                                        <span class="min-w-0 truncate font-semibold text-slate-700 dark:text-zinc-300">{{ $facility['name'] }}<span class="ml-1 font-normal text-slate-500 dark:text-zinc-400">{{ $facility['property'] }}</span></span>
+                                        <span class="shrink-0 font-bold text-slate-950 dark:text-white">{{ number_format($facility['progress'], 1) }}%</span>
+                                    </div>
+                                    <div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
+                                        <div class="h-full rounded-full bg-blue-700" style="width: {{ min(100, max(0, $facility['progress'])) }}%"></div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <p class="mt-5 rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">Belum ada data fasilitas untuk filter ini.</p>
+                    @endif
+                </section>
+            </div>
+        </section>
 
+        <x-site-plan-map
+            :property="$selectedProperty"
+            :lots="$sitePlanLots"
+            :areas="$sitePlanAreas"
+            :selected-lot-id="$lotId"
+            :manage-url="null"
+            :dashboard-url="route('pembangunan.dashboard')"
+            detail-mode="modal"
+            management-role="pembangunan"
+            :wide="true"
+        />
     </div>
-
 </x-layouts::app>

@@ -31,6 +31,13 @@ test('finance staff can add any bank and record a plan in week four', function (
     $account = FinanceCashAccount::query()->where('name', 'Bank Baru')->firstOrFail();
     expect($account->account_key)->toStartWith('finance-')
         ->and((float) $account->balance)->toBe(1250000.0);
+    $this->assertDatabaseHas('finance_cash_account_balance_histories', [
+        'cash_account_id' => $account->id,
+        'account_name' => 'Bank Baru',
+        'previous_balance' => null,
+        'new_balance' => '1250000.00',
+        'changed_by' => $user->id,
+    ]);
 
     $this->post(route('keuangan.cash-flows.store'), [
         'title' => 'Pembayaran material',
@@ -53,7 +60,42 @@ test('finance staff can add any bank and record a plan in week four', function (
 
     $this->get(route('keuangan.cash-position.index'))
         ->assertSee('Bank Baru')
+        ->assertSee('Total Saldo Bank & Kas')
+        ->assertSee('Rp 1.250.000')
         ->assertSee('Pembayaran material');
+});
+
+test('finance cash position totals all recorded bank and cash balances', function () {
+    $division = Division::create([
+        'name' => 'Finance',
+        'slug' => 'finance',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_finance',
+        'division_id' => $division->id,
+    ]);
+    FinanceCashAccount::query()->create([
+        'account_key' => 'finance-total-bank',
+        'name' => 'Bank Utama',
+        'balance' => 1250000,
+    ]);
+    FinanceCashAccount::query()->create([
+        'account_key' => 'finance-total-cash',
+        'name' => 'Kas Kantor',
+        'balance' => 750000,
+    ]);
+    FinanceCashAccount::query()->create([
+        'account_key' => 'finance-total-unset',
+        'name' => 'Rekening Belum Diisi',
+        'balance' => null,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('keuangan.cash-position.index'))
+        ->assertSee('Total Saldo Bank & Kas')
+        ->assertSee('Rp 2.000.000')
+        ->assertSee('Rekening Belum Diisi');
 });
 
 test('marketing users cannot access the finance cash position', function () {
@@ -70,6 +112,54 @@ test('marketing users cannot access the finance cash position', function () {
     $this->actingAs($user)
         ->get(route('keuangan.cash-position.index'))
         ->assertForbidden();
+});
+
+test('finance staff can delete a cash account', function () {
+    $division = Division::create([
+        'name' => 'Finance',
+        'slug' => 'finance',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_finance',
+        'division_id' => $division->id,
+    ]);
+    $account = FinanceCashAccount::query()->create([
+        'account_key' => 'finance-delete-test',
+        'name' => 'Bank yang Dihapus',
+        'balance' => 250000,
+        'updated_by' => $user->id,
+    ]);
+
+    $this->actingAs($user)
+        ->delete(route('keuangan.cash-accounts.destroy', $account))
+        ->assertRedirect(route('keuangan.cash-position.index'))
+        ->assertSessionHas('success', 'Rekening berhasil dihapus.');
+
+    $this->assertDatabaseMissing('finance_cash_accounts', ['id' => $account->id]);
+});
+
+test('marketing users cannot delete a finance cash account', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $account = FinanceCashAccount::query()->create([
+        'account_key' => 'finance-protected-account',
+        'name' => 'Bank Finance',
+        'balance' => 250000,
+    ]);
+
+    $this->actingAs($user)
+        ->delete(route('keuangan.cash-accounts.destroy', $account))
+        ->assertForbidden();
+
+    $this->assertDatabaseHas('finance_cash_accounts', ['id' => $account->id]);
 });
 
 test('finance rejects a cash-flow date outside the selected week', function () {

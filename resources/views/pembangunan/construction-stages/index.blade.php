@@ -1,9 +1,10 @@
 <x-layouts::app :title="__('Tahapan Pembangunan')">
+    @php($stageRoutePrefix = auth()->user()->role === 'admin' ? 'admin' : 'pembangunan')
     <div class="space-y-6">
         <div>
             <h1 class="text-2xl font-semibold text-zinc-900 dark:text-white">Tahapan Pembangunan</h1>
             <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Atur tahapan dan rentang progress untuk setiap perumahan.
+                Atur tahapan dan rentang progress untuk setiap perumahan. Persentase antar tahapan boleh sama.
             </p>
         </div>
 
@@ -35,29 +36,69 @@
 
                     <div class="space-y-3 p-5">
                         @forelse($property->constructionStages as $stage)
-                            <div class="flex items-start justify-between gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
-                                <div class="min-w-0">
-                                    <p class="font-medium text-zinc-900 dark:text-white">
-                                        {{ $stage->order }}. {{ $stage->name }}
-                                    </p>
-                                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                                        {{ $stage->min_progress }}%-{{ $stage->max_progress }}%
-                                        @if($stage->description)
-                                            · {{ $stage->description }}
-                                        @endif
-                                    </p>
+                            <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <p class="font-medium text-zinc-900 dark:text-white">
+                                            {{ $stage->order }}. {{ $stage->name }}
+                                        </p>
+                                        <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                            {{ $stage->min_progress }}%-{{ $stage->max_progress }}%
+                                            @if($stage->description)
+                                                · {{ $stage->description }}
+                                            @endif
+                                        </p>
+                                    </div>
+                                    <form
+                                        method="POST"
+                                        action="{{ route($stageRoutePrefix.'.property-construction-stages.destroy', [$property, $stage]) }}"
+                                        onsubmit="return confirm('Hapus tahapan ini beserta progress kavling terkait?')"
+                                    >
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="shrink-0 rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20">
+                                            Hapus
+                                        </button>
+                                    </form>
                                 </div>
-                                <form
-                                    method="POST"
-                                    action="{{ route('admin.property-construction-stages.destroy', [$property, $stage]) }}"
-                                    onsubmit="return confirm('Hapus tahapan ini beserta progress kavling terkait?')"
-                                >
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="shrink-0 rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20">
-                                        Hapus
-                                    </button>
-                                </form>
+                                <details class="mt-3">
+                                    <summary class="inline-flex cursor-pointer list-none rounded-lg border border-orange-200 px-3 py-2 text-xs font-medium text-orange-700 hover:bg-orange-50 dark:border-orange-900 dark:text-orange-300 dark:hover:bg-orange-900/20">
+                                        Edit Tahapan
+                                    </summary>
+                                    <form
+                                        method="POST"
+                                        action="{{ route($stageRoutePrefix.'.property-construction-stages.update', [$property, $stage]) }}"
+                                        class="mt-3 grid gap-3 rounded-lg bg-zinc-50 p-4 sm:grid-cols-2 dark:bg-zinc-800"
+                                    >
+                                        @csrf
+                                        @method('PUT')
+                                        <div>
+                                            <label for="edit-stage-name-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Nama tahapan</label>
+                                            <input id="edit-stage-name-{{ $stage->id }}" name="name" required maxlength="255" value="{{ $stage->name }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
+                                        </div>
+                                        <div>
+                                            <label for="edit-stage-order-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Urutan</label>
+                                            <input id="edit-stage-order-{{ $stage->id }}" type="number" name="order" required min="1" value="{{ $stage->order }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
+                                        </div>
+                                        <div>
+                                            <label for="edit-stage-min-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Progress minimum (%)</label>
+                                            <input id="edit-stage-min-{{ $stage->id }}" type="number" name="min_progress" required min="0" max="100" step="0.01" value="{{ $stage->min_progress }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
+                                        </div>
+                                        <div>
+                                            <label for="edit-stage-max-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Progress maksimum (%)</label>
+                                            <input id="edit-stage-max-{{ $stage->id }}" type="number" name="max_progress" required min="0" max="100" step="0.01" value="{{ $stage->max_progress }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <label for="edit-stage-description-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Deskripsi (opsional)</label>
+                                            <textarea id="edit-stage-description-{{ $stage->id }}" name="description" rows="2" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">{{ $stage->description }}</textarea>
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                                Simpan Perubahan
+                                            </button>
+                                        </div>
+                                    </form>
+                                </details>
                             </div>
                         @empty
                             <p class="text-sm text-zinc-500 dark:text-zinc-400">Belum ada tahapan untuk perumahan ini.</p>
@@ -65,7 +106,7 @@
 
                         <form
                             method="POST"
-                            action="{{ route('admin.property-construction-stages.store', $property) }}"
+                            action="{{ route($stageRoutePrefix.'.property-construction-stages.store', $property) }}"
                             class="grid gap-3 rounded-lg bg-zinc-50 p-4 sm:grid-cols-2 dark:bg-zinc-800"
                         >
                             @csrf

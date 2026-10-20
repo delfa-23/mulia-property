@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Pembangunan;
 
 use App\Http\Controllers\Controller;
 use App\Models\Block;
+use App\Models\Budget;
 use App\Models\CommonFacility;
 use App\Models\ConstructionProgress;
-use App\Models\ConstructionProgressHistory;
+use App\Models\ConstructionStage;
+use App\Models\ExpenseTransaction;
 use App\Models\Lot;
 use App\Models\Property;
 use Illuminate\Http\Request;
@@ -50,17 +52,100 @@ class DashboardController extends Controller
             ->when($lotId, fn ($query) => $query->whereKey($lotId));
 
         $properties = Property::query()->orderBy('name')->get();
-        $blocks = Block::query()
-            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-            ->orderBy('name')
-            ->get();
+        $selectedProperty = $properties->firstWhere('id', $propertyId);
         $lots = Lot::query()
             ->with('block')
             ->when($propertyId, fn ($query) => $query->whereHas('block', fn ($query) => $query->where('property_id', $propertyId)))
             ->when($blockId, fn ($query) => $query->where('block_id', $blockId))
             ->orderBy('lot_number')
             ->get();
+        $sitePlanLots = $selectedProperty
+            ? $selectedProperty->lots()
+                ->with([
+                    'block',
+                    'bookings' => fn ($query) => $query
+                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                        ->with(['customer', 'sales'])
+                        ->latest('id'),
+                ])
+                ->orderBy('lot_number')
+                ->get()
+            : collect();
+        $sitePlanAreas = $selectedProperty
+            ? $selectedProperty->sitePlanAreas()
+                ->where('site_plan_path', $selectedProperty->site_plan_path)
+                ->with([
+                    'lot.block',
+                    'lot.bookings' => fn ($query) => $query
+                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                        ->with(['customer', 'sales'])
+                        ->latest('id'),
+                ])
+                ->orderBy('id')
+                ->get()
+            : collect();
         $lotStats = $filterLots(Lot::query());
+        $dashboardLots = (clone $lotStats)
+            ->select(['id', 'block_id', 'status'])
+            ->with([
+                'block:id,property_id',
+                'bookings' => fn ($query) => $query
+                    ->select(['id', 'lot_id', 'status'])
+                    ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                    ->with('sp3:id,booking_id,status')
+                    ->latest('id'),
+                'constructionProgresses' => fn ($query) => $query
+                    ->select(['id', 'lot_id', 'stage_id', 'progress'])
+                    ->whereNotNull('stage_id')
+                    ->with('stage:id,property_id,max_progress,is_active'),
+            ])
+            ->get();
+        $stages = ConstructionStage::query()
+            ->where(function ($query) use ($dashboardLots): void {
+                $query->whereIn(
+                    'property_id',
+                    $dashboardLots->pluck('block.property_id')->unique()->values()
+                )->orWhereNull('property_id');
+            })
+            ->get(['id', 'property_id', 'max_progress', 'is_active']);
+        $propertyStagePropertyIds = $stages
+            ->whereNotNull('property_id')
+            ->pluck('property_id')
+            ->unique();
+        $activeStages = $stages->where('is_active', true);
+        $propertyStages = $activeStages
+            ->whereNotNull('property_id')
+            ->groupBy('property_id');
+        $globalStages = $activeStages->whereNull('property_id');
+        $statusByLot = $dashboardLots->mapWithKeys(function (Lot $lot) use ($propertyStagePropertyIds, $propertyStages, $globalStages): array {
+            $requiredStages = $propertyStagePropertyIds->contains($lot->block->property_id)
+                ? $propertyStages->get($lot->block->property_id, collect())
+                : $globalStages;
+            $progressByStage = $lot->constructionProgresses->keyBy('stage_id');
+            $allStagesComplete = $requiredStages->isNotEmpty()
+                && $requiredStages->every(function (ConstructionStage $stage) use ($progressByStage): bool {
+                    $progress = $progressByStage->get($stage->id);
+
+                    return $progress !== null
+                        && (float) $progress->progress >= (float) $stage->max_progress;
+                });
+            $booking = $lot->bookings->first();
+
+            $status = match ($booking?->status) {
+                'booking' => 'booked',
+                'process' => $booking->sp3?->status === 'issued' ? 'sp3' : 'process',
+                'akad' => 'akad',
+                'finish' => $allStagesComplete ? 'finish' : 'akad',
+                default => match ($lot->status) {
+                    'blocked' => 'booked',
+                    'finish' => $allStagesComplete ? 'finish' : 'akad',
+                    default => $lot->status,
+                },
+            };
+
+            return [$lot->id => $status];
+        });
+        $lotStatusCounts = $statusByLot->countBy();
         $physicalProgressByLot = ConstructionProgress::query()
             ->whereNotNull('stage_id')
             ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
@@ -75,45 +160,38 @@ class DashboardController extends Controller
                 ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
                 ->when($blockId, fn ($query) => $query->whereKey($blockId))
                 ->count(),
-            'total_lots' => (clone $lotStats)->count(),
-
-            'available_lots' => (clone $lotStats)->where('status', 'available')->count(),
-            'booked_lots' => (clone $lotStats)->where('status', 'booked')->count(),
-            'process_lots' => (clone $lotStats)->where('status', 'process')->count(),
-            'akad_lots' => (clone $lotStats)->where('status', 'akad')->count(),
-            'finish_lots' => (clone $lotStats)->where('status', 'finish')->count(),
+            'total_lots' => $dashboardLots->count(),
 
             'physical_progress' => round((float) $physicalProgressByLot->avg('physical_progress'), 2),
-            'facility_progress' => round((float) CommonFacility::query()
-                ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-                ->get()
-                ->avg(fn (CommonFacility $facility): float => $facility->progress), 2),
         ];
 
-        $lotStatusDefinitions = [
-            'available' => ['label' => 'Tersedia', 'color' => '#009851'],
-            'booked' => ['label' => 'Booking', 'color' => '#3b82f6'],
-            'process' => ['label' => 'Proses Berkas', 'color' => '#ff9100'],
-            'akad' => ['label' => 'Akad', 'color' => '#1e3a5f'],
-            'finish' => ['label' => 'Finish', 'color' => '#10b981'],
-            'blocked' => ['label' => 'Blocked', 'color' => '#64748b'],
-            'cancelled' => ['label' => 'Dibatalkan', 'color' => '#ef4444'],
-        ];
-        $lotStatusTotal = $stats['total_lots'];
-        $lotStatusChart = collect($lotStatusDefinitions)
-            ->map(function (array $statusData, string $status) use ($lotStats, $lotStatusTotal): array {
-                $value = (clone $lotStats)->where('status', $status)->count();
+        foreach (['available', 'booked', 'process', 'sp3', 'akad', 'finish', 'cancelled'] as $status) {
+            $stats[$status.'_lots'] = (int) $lotStatusCounts->get($status, 0);
+        }
 
-                return [
-                    'status' => $status,
-                    'label' => $statusData['label'],
-                    'color' => $statusData['color'],
-                    'value' => $value,
-                    'percent' => $lotStatusTotal > 0 ? round($value / $lotStatusTotal * 100, 1) : 0,
-                ];
-            })
-            ->values();
-
+        $filterFinancialRecords = fn ($query) => $query
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->when($lotId, fn ($query) => $query->where(function ($query) use ($lotId): void {
+                $query->where('lot_id', $lotId)
+                    ->orWhere(fn ($query) => $query
+                        ->whereNull('lot_id')
+                        ->whereNull('facility_id'));
+            }))
+            ->when(! $lotId && $blockId, fn ($query) => $query->where(function ($query) use ($blockId): void {
+                $query->whereIn('lot_id', Lot::query()->where('block_id', $blockId)->select('id'))
+                    ->orWhere(fn ($query) => $query
+                        ->whereNull('lot_id')
+                        ->whereNull('facility_id'));
+            }));
+        $totalBudget = Budget::query()
+            ->where('purpose', 'pembangunan')
+            ->tap($filterFinancialRecords)
+            ->sum('amount');
+        $totalExpense = ExpenseTransaction::query()
+            ->where('division', 'pembangunan')
+            ->tap($filterFinancialRecords)
+            ->sum('amount');
+        $totalConstructionDeviation = (float) $totalBudget - (float) $totalExpense;
         $stageProgress = ConstructionProgress::query()
             ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
             ->select('stage_id')
@@ -128,26 +206,6 @@ class DashboardController extends Controller
                 'progress' => round((float) $progress->average_progress, 2),
             ])
             ->values();
-
-        $progressHistory = ConstructionProgressHistory::query()
-            ->whereBetween('created_at', [now()->startOfMonth()->subMonths(5), now()->endOfMonth()])
-            ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('constructionProgress.lot', $filterLots))
-            ->get(['progress', 'created_at']);
-        $monthlyPhysicalProgressChart = collect(range(5, 0))
-            ->map(function (int $monthsAgo) use ($progressHistory): array {
-                $month = now()->startOfMonth()->subMonths($monthsAgo);
-                $monthlyUpdates = $progressHistory->filter(fn (ConstructionProgressHistory $history): bool => $history->created_at?->format('Y-m') === $month->format('Y-m'));
-                $averageProgress = $monthlyUpdates->isEmpty() ? null : round((float) $monthlyUpdates->avg('progress'), 2);
-
-                return [
-                    'key' => $month->format('Y-m'),
-                    'label' => $month->format('M Y'),
-                    'progress' => $averageProgress,
-                    'updates' => $monthlyUpdates->count(),
-                ];
-            })
-            ->values();
-
         $facilityProgressChart = CommonFacility::query()
             ->with('property')
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
@@ -161,37 +219,54 @@ class DashboardController extends Controller
             ->take(8)
             ->values();
 
-        $latestProgressUpdates = ConstructionProgress::query()
-            ->with(['lot.block.property', 'stage', 'updatedBy'])
-            ->whereNotNull('stage_id')
-            ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
-            ->latest('updated_at')
-            ->limit(5)
-            ->get();
+        $lotStatusDefinitions = [
+            'available' => ['label' => 'Tersedia', 'color' => '#15803d'],
+            'booked' => ['label' => 'Booking', 'color' => '#2563eb'],
+            'process' => ['label' => 'Proses', 'color' => '#ea580c'],
+            'sp3' => ['label' => 'SP3', 'color' => '#ca8a04'],
+            'akad' => ['label' => 'Akad', 'color' => '#1e3a8a'],
+            'finish' => ['label' => 'Serah Terima Rumah', 'color' => '#059669'],
+            'cancelled' => ['label' => 'Dibatalkan', 'color' => '#64748b'],
+        ];
+        $lotStatusTotal = $stats['total_lots'];
+        $cumulativeStatusCount = 0;
+        $lotStatusChart = collect($lotStatusDefinitions)
+            ->map(function (array $statusData, string $status) use ($lotStatusCounts, $lotStatusTotal, &$cumulativeStatusCount): array {
+                $value = (int) $lotStatusCounts->get($status, 0);
+                $startPercent = $lotStatusTotal > 0 ? $cumulativeStatusCount / $lotStatusTotal * 100 : 0;
+                $cumulativeStatusCount += $value;
+                $endPercent = $lotStatusTotal > 0 ? $cumulativeStatusCount / $lotStatusTotal * 100 : 0;
 
-        $latestFacilityUpdates = CommonFacility::query()
-            ->with('property')
-            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-            ->latest('updated_at')
-            ->limit(5)
-            ->get();
+                return [
+                    'status' => $status,
+                    'label' => $statusData['label'],
+                    'color' => $statusData['color'],
+                    'value' => $value,
+                    'percent' => $lotStatusTotal > 0 ? round($value / $lotStatusTotal * 100, 1) : 0,
+                    'start_percent' => $startPercent,
+                    'end_percent' => $endPercent,
+                ];
+            })
+            ->values();
 
         return view(
             'pembangunan.dashboard',
             compact(
                 'stats',
-                'latestProgressUpdates',
-                'latestFacilityUpdates',
                 'properties',
-                'blocks',
+                'selectedProperty',
                 'lots',
+                'sitePlanLots',
+                'sitePlanAreas',
                 'propertyId',
                 'blockId',
                 'lotId',
                 'lotStatusChart',
                 'lotStatusTotal',
+                'totalBudget',
+                'totalExpense',
+                'totalConstructionDeviation',
                 'stageProgress',
-                'monthlyPhysicalProgressChart',
                 'facilityProgressChart',
             )
         );

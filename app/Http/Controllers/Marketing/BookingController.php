@@ -12,6 +12,8 @@ use App\Models\MarketingLead;
 use App\Models\Property;
 use App\Models\Sales;
 use App\Services\ActivityLogger;
+use App\Services\BookingPaymentFinanceSync;
+use App\Services\BookingPaymentSummaryService;
 use App\Services\MarketingLeadAccess;
 use App\Services\PemberkasanDocumentService;
 use Illuminate\Http\RedirectResponse;
@@ -63,6 +65,7 @@ class BookingController extends Controller
     public function store(
         Request $request,
         ActivityLogger $activityLogger,
+        BookingPaymentFinanceSync $financeSync,
         MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
         $validated = $this->validated($request);
@@ -86,7 +89,7 @@ class BookingController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($request, $validated, $dpPaidAmount, $akadPaidAmount, $activityLogger): void {
+        DB::transaction(function () use ($request, $validated, $dpPaidAmount, $akadPaidAmount, $activityLogger, $financeSync): void {
             $this->resolveCustomer($validated);
             $lot = Lot::query()->lockForUpdate()->findOrFail($validated['lot_id']);
             $this->ensureLotAvailable($lot);
@@ -116,11 +119,11 @@ class BookingController extends Controller
             }
 
             if ($dpPaidAmount > 0) {
-                $this->recordBookingPayment($booking, 'dp', $dpPaidAmount, $request, $activityLogger, 'Pembayaran DP awal dicatat dari form booking.');
+                $this->recordBookingPayment($booking, 'dp', $dpPaidAmount, $request, $activityLogger, $financeSync, 'Pembayaran DP awal dicatat dari form booking.');
             }
 
             if ($akadPaidAmount > 0) {
-                $this->recordBookingPayment($booking, 'akad_fee', $akadPaidAmount, $request, $activityLogger, 'Pembayaran biaya akad awal dicatat dari form booking.');
+                $this->recordBookingPayment($booking, 'akad_fee', $akadPaidAmount, $request, $activityLogger, $financeSync, 'Pembayaran biaya akad awal dicatat dari form booking.');
             }
 
             $lot->update(['status' => $this->lotStatusFor($booking->status)]);
@@ -138,7 +141,7 @@ class BookingController extends Controller
         return redirect()->route('marketing.bookings.index')->with('success', 'Booking berhasil dibuat.');
     }
 
-    public function show(Booking $booking): View
+    public function show(Booking $booking, BookingPaymentSummaryService $paymentSummaryService): View
     {
         $booking->load([
             'lot.block.property',
@@ -147,10 +150,11 @@ class BookingController extends Controller
             'sales',
             'histories.changedBy',
             'payments.recordedBy',
+            'paymentOrders',
             'documentProcess',
             'pemberkasanDocuments.uploadedBy',
         ]);
-        $paymentSummary = $this->paymentSummary($booking);
+        $paymentSummary = $paymentSummaryService->summarize($booking);
 
         return view('marketing.bookings.show', compact('booking', 'paymentSummary'));
     }
@@ -228,10 +232,14 @@ class BookingController extends Controller
         return $response;
     }
 
-    public function edit(Request $request, Booking $booking, MarketingLeadAccess $leadAccess): View
-    {
+    public function edit(
+        Request $request,
+        Booking $booking,
+        MarketingLeadAccess $leadAccess,
+        BookingPaymentSummaryService $paymentSummaryService,
+    ): View {
         $booking->load(['lot', 'payments']);
-        $paymentSummary = $this->paymentSummary($booking);
+        $paymentSummary = $paymentSummaryService->summarize($booking);
 
         return view('marketing.bookings.edit', array_merge(
             ['booking' => $booking, 'paymentSummary' => $paymentSummary],
@@ -244,7 +252,9 @@ class BookingController extends Controller
         Request $request,
         Booking $booking,
         ActivityLogger $activityLogger,
+        BookingPaymentFinanceSync $financeSync,
         MarketingLeadAccess $leadAccess,
+        BookingPaymentSummaryService $paymentSummaryService,
     ): RedirectResponse {
         $validated = $this->validated($request, $booking);
         if (
@@ -267,9 +277,9 @@ class BookingController extends Controller
             : null;
         unset($validated['dp_paid_amount']);
         unset($validated['akad_paid_amount']);
-        $this->ensureStatusOrder($booking, $validated['status']);
+        $this->ensureStatusOrder($booking, $validated['status'], $paymentSummaryService);
 
-        DB::transaction(function () use ($request, $booking, $validated, $dpPaidAmount, $akadPaidAmount, $activityLogger): void {
+        DB::transaction(function () use ($request, $booking, $validated, $dpPaidAmount, $akadPaidAmount, $activityLogger, $financeSync): void {
             $this->resolveCustomer($validated);
             $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $lotIds = collect([$lockedBooking->lot_id, $validated['lot_id']])->unique()->sort()->values();
@@ -277,9 +287,11 @@ class BookingController extends Controller
             $targetLot = $lockedLots->get($validated['lot_id']);
             $oldLot = $lockedLots->get($lockedBooking->lot_id);
             $hasPayments = $lockedBooking->payments()->exists();
+            $hasPendingPaymentOrders = $lockedBooking->paymentOrders()->where('status', 'pending')->exists();
+            $hasPaymentActivity = $hasPayments || $hasPendingPaymentOrders;
 
             if (
-                $hasPayments &&
+                $hasPaymentActivity &&
                 ((int) $lockedBooking->customer_id !== (int) $validated['customer_id'] ||
                     $lockedBooking->lot_id !== $targetLot->id ||
                     (float) $lockedBooking->akad_fee !== (float) $validated['akad_fee'])
@@ -293,7 +305,7 @@ class BookingController extends Controller
                 $this->ensureLotAvailable($targetLot, $lockedBooking);
             }
 
-            $validated['house_price_snapshot'] = $hasPayments
+            $validated['house_price_snapshot'] = $hasPaymentActivity
                 ? $lockedBooking->house_price_snapshot
                 : $targetLot->house_price;
             $validated['dp_percentage'] = Booking::DP_PERCENTAGE;
@@ -307,6 +319,8 @@ class BookingController extends Controller
                 ? $existingAkadPaid
                 : round($akadPaidAmount, 2);
             $totalDp = round($housePrice * Booking::DP_PERCENTAGE / 100, 2);
+            $additionalDpPaid = round($requestedDpPaid - $existingDpPaid, 2);
+            $additionalAkadPaid = round($requestedAkadPaid - $existingAkadPaid, 2);
 
             if ($requestedDpPaid + 0.009 < $existingDpPaid) {
                 throw ValidationException::withMessages([
@@ -341,18 +355,25 @@ class BookingController extends Controller
                 ]);
             }
 
-            $lockedBooking->update($validated);
-
-            $additionalDpPaid = round($requestedDpPaid - $existingDpPaid, 2);
-
-            if ($additionalDpPaid > 0.009) {
-                $this->recordBookingPayment($lockedBooking, 'dp', $additionalDpPaid, $request, $activityLogger, 'Tambahan pembayaran DP dicatat dari form booking.');
+            if (
+                $hasPendingPaymentOrders &&
+                ($additionalDpPaid > 0.009 ||
+                    $additionalAkadPaid > 0.009 ||
+                    in_array($validated['status'], ['cancelled', 'finish'], true))
+            ) {
+                throw ValidationException::withMessages([
+                    'status' => 'Selesaikan atau tunggu konfirmasi pembayaran Midtrans sebelum mengubah pembayaran atau membatalkan booking.',
+                ]);
             }
 
-            $additionalAkadPaid = round($requestedAkadPaid - $existingAkadPaid, 2);
+            $lockedBooking->update($validated);
+
+            if ($additionalDpPaid > 0.009) {
+                $this->recordBookingPayment($lockedBooking, 'dp', $additionalDpPaid, $request, $activityLogger, $financeSync, 'Tambahan pembayaran DP dicatat dari form booking.');
+            }
 
             if ($additionalAkadPaid > 0.009) {
-                $this->recordBookingPayment($lockedBooking, 'akad_fee', $additionalAkadPaid, $request, $activityLogger, 'Tambahan pembayaran biaya akad dicatat dari form booking.');
+                $this->recordBookingPayment($lockedBooking, 'akad_fee', $additionalAkadPaid, $request, $activityLogger, $financeSync, 'Tambahan pembayaran biaya akad dicatat dari form booking.');
             }
 
             if ($oldLot && $oldLot->id !== $targetLot->id) {
@@ -376,8 +397,13 @@ class BookingController extends Controller
         return redirect()->route('marketing.bookings.index')->with('success', 'Booking berhasil diperbarui.');
     }
 
-    public function storePayment(Request $request, Booking $booking, ActivityLogger $activityLogger): RedirectResponse
-    {
+    public function storePayment(
+        Request $request,
+        Booking $booking,
+        ActivityLogger $activityLogger,
+        BookingPaymentFinanceSync $financeSync,
+        BookingPaymentSummaryService $paymentSummaryService,
+    ): RedirectResponse {
         $validated = $request->validate([
             'stage' => ['required', Rule::in(['dp', 'akad_fee'])],
             'amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.01'],
@@ -387,7 +413,7 @@ class BookingController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
-        DB::transaction(function () use ($request, $booking, $validated, $activityLogger): void {
+        DB::transaction(function () use ($request, $booking, $validated, $activityLogger, $financeSync, $paymentSummaryService): void {
             $lockedBooking = Booking::query()->with('lot')->lockForUpdate()->findOrFail($booking->id);
 
             if (in_array($lockedBooking->status, ['cancelled', 'finish'], true)) {
@@ -396,7 +422,7 @@ class BookingController extends Controller
                 ]);
             }
 
-            $summary = $this->paymentSummary($lockedBooking);
+            $summary = $paymentSummaryService->summarize($lockedBooking);
             $nextStage = collect($summary['stages'])->first(fn (array $stage): bool => $stage['remaining'] > 0.009);
 
             if ($nextStage === null || $validated['stage'] !== $nextStage['key']) {
@@ -411,10 +437,17 @@ class BookingController extends Controller
                 ]);
             }
 
+            if ($lockedBooking->paymentOrders()->where('stage', $validated['stage'])->where('status', 'pending')->exists()) {
+                throw ValidationException::withMessages([
+                    'stage' => 'Selesaikan atau tunggu konfirmasi pembayaran Midtrans untuk tahap ini sebelum mencatat pembayaran manual.',
+                ]);
+            }
+
             $payment = $lockedBooking->payments()->create([
                 ...$validated,
                 'recorded_by' => $request->user()->id,
             ]);
+            $financeSync->sync($payment);
             $activityLogger->record($request, 'booking.payment_recorded', $payment, 'Pembayaran booking dicatat.');
         });
 
@@ -424,6 +457,11 @@ class BookingController extends Controller
     public function destroy(Request $request, Booking $booking, ActivityLogger $activityLogger): RedirectResponse
     {
         abort_unless($booking->status === 'cancelled', 422, 'Booking harus berstatus cancelled sebelum dihapus.');
+        abort_if(
+            $booking->paymentOrders()->where('status', 'pending')->exists(),
+            422,
+            'Booking tidak dapat dihapus selama transaksi Midtrans masih menunggu pembayaran.',
+        );
 
         DB::transaction(function () use ($request, $booking, $activityLogger): void {
             $lot = Lot::query()->lockForUpdate()->find($booking->lot_id);
@@ -496,6 +534,7 @@ class BookingController extends Controller
         float $amount,
         Request $request,
         ActivityLogger $activityLogger,
+        BookingPaymentFinanceSync $financeSync,
         string $notes
     ): void {
         $payment = $booking->payments()->create([
@@ -506,6 +545,7 @@ class BookingController extends Controller
             'notes' => $notes,
         ]);
 
+        $financeSync->sync($payment);
         $activityLogger->record($request, 'booking.payment_recorded', $payment, 'Pembayaran booking dicatat.');
     }
 
@@ -597,52 +637,11 @@ class BookingController extends Controller
             : ($status === 'booking' ? 'booked' : $status);
     }
 
-    /** @return array{stages: list<array{key: string, label: string, due: float, paid: float, remaining: float, paid_percentage: float}>, house_price: float, dp_total: float, dp_paid: float, dp_paid_percentage: float, total_paid: float, total_paid_price: float, paid_percentage: float} */
-    private function paymentSummary(Booking $booking): array
-    {
-        $housePrice = (float) ($booking->house_price_snapshot ?? $booking->lot->house_price);
-        $downPaymentTotal = $housePrice;
-        $targets = [
-            'dp' => ['label' => 'Pembayaran DP', 'due' => $downPaymentTotal],
-            'akad_fee' => ['label' => 'Biaya Akad', 'due' => (float) $booking->akad_fee],
-        ];
-        $paidAmounts = $booking->payments
-            ->groupBy('stage')
-            ->map(fn ($payments) => (float) $payments->sum('amount'));
-        $stages = [];
-
-        foreach ($targets as $key => $target) {
-            $paid = $key === 'dp'
-                ? (float) $paidAmounts->get('dp', 0) + (float) $paidAmounts->get('bank_settlement', 0)
-                : $paidAmounts->get($key, 0.0);
-            $stages[] = [
-                'key' => $key,
-                'label' => $target['label'],
-                'due' => $target['due'],
-                'paid' => $paid,
-                'remaining' => max(0, round($target['due'] - $paid, 2)),
-                'paid_percentage' => $target['due'] > 0 ? min(100, $paid / $target['due'] * 100) : 100,
-            ];
-        }
-
-        $totalPaid = (float) $booking->payments->sum('amount');
-        $dpPaid = (float) $paidAmounts->get('dp', 0) + (float) $paidAmounts->get('bank_settlement', 0);
-        $totalPaidPrice = $dpPaid;
-
-        return [
-            'stages' => $stages,
-            'house_price' => $housePrice,
-            'dp_total' => $downPaymentTotal,
-            'dp_paid' => $dpPaid,
-            'dp_paid_percentage' => $housePrice > 0 ? min(100, $dpPaid / $housePrice * 100) : 0,
-            'total_paid' => $totalPaid,
-            'total_paid_price' => $totalPaidPrice,
-            'paid_percentage' => $housePrice > 0 ? min(100, $totalPaidPrice / $housePrice * 100) : 0,
-        ];
-    }
-
-    private function ensureStatusOrder(Booking $booking, string $status): void
-    {
+    private function ensureStatusOrder(
+        Booking $booking,
+        string $status,
+        BookingPaymentSummaryService $paymentSummaryService,
+    ): void {
         if ($status === 'cancelled' || $status === $booking->status) {
             return;
         }
@@ -674,7 +673,7 @@ class BookingController extends Controller
         }
 
         if ($status === 'akad') {
-            $requiredPayments = collect($this->paymentSummary($booking)['stages'])
+            $requiredPayments = collect($paymentSummaryService->summarize($booking)['stages'])
                 ->whereIn('key', ['dp', 'akad_fee']);
 
             if ($requiredPayments->contains(fn (array $stage): bool => $stage['remaining'] > 0.009)) {
@@ -691,7 +690,7 @@ class BookingController extends Controller
         }
 
         if ($status === 'finish') {
-            $unpaidStages = collect($this->paymentSummary($booking)['stages'])
+            $unpaidStages = collect($paymentSummaryService->summarize($booking)['stages'])
                 ->filter(fn (array $stage): bool => $stage['remaining'] > 0.009);
 
             if ($unpaidStages->isNotEmpty()) {

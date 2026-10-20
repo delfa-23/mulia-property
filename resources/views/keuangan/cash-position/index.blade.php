@@ -5,6 +5,30 @@
             <p class="mt-1 text-sm text-zinc-500">Kelola saldo rekening dan proyeksi pemasukan/pengeluaran per minggu.</p>
         </div>
 
+        <form method="GET" action="{{ route('keuangan.cash-position.index') }}" class="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end dark:border-zinc-700 dark:bg-zinc-900">
+            <input type="hidden" name="history_month" value="{{ $selectedHistoryMonth }}">
+            <div class="w-full max-w-xl space-y-1.5">
+                <label for="site-plan-property" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Denah perumahan</label>
+                <select id="site-plan-property" name="site_plan_property_id" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                    <option value="">Pilih perumahan</option>
+                    @foreach($properties as $property)
+                        <option value="{{ $property->id }}" @selected($sitePlanPropertyId === $property->id)>{{ $property->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <button type="submit" class="rounded-lg bg-[#10233D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]">Tampilkan denah</button>
+        </form>
+
+        <x-site-plan-map
+            :property="$selectedProperty"
+            :lots="$sitePlanLots"
+            :areas="$sitePlanAreas"
+            :manage-url="null"
+            :dashboard-url="route('keuangan.cash-position.index')"
+            detail-mode="modal"
+            :management-role="null"
+        />
+
         @if(session('success'))
             <div role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>
         @endif
@@ -34,6 +58,14 @@
                 </form>
             </div>
 
+            <article class="rounded-xl border border-[#10233D] bg-[#10233D] p-5 text-white shadow-sm sm:p-6">
+                <p class="text-sm font-medium text-blue-100">Total Saldo Bank &amp; Kas</p>
+                <p class="mt-2 text-3xl font-bold tabular-nums sm:text-4xl">
+                    Rp {{ number_format($totalCashAccountBalance, 0, ',', '.') }}
+                </p>
+                <p class="mt-2 text-sm text-blue-100">Gabungan saldo seluruh rekening yang tercatat.</p>
+            </article>
+
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 @forelse($cashAccounts as $cashAccount)
                     <article class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -52,11 +84,62 @@
                             <input id="balance-{{ $cashAccount->id }}" name="balance" type="text" inputmode="decimal" data-currency-input data-currency-min="0" data-currency-step="0.01" autocomplete="off" required value="{{ $cashAccount->balance }}" class="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
                             <button type="submit" class="rounded-lg bg-blue-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-800">Simpan</button>
                         </form>
+                        <form method="POST" action="{{ route('keuangan.cash-accounts.destroy', $cashAccount) }}" class="mt-2 text-right" onsubmit="return confirm('Hapus rekening ini?')">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="text-sm font-medium text-rose-700 hover:underline dark:text-rose-300">Hapus rekening</button>
+                        </form>
                     </article>
                 @empty
                     <p class="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-500 sm:col-span-2 xl:col-span-4">Belum ada rekening yang dicatat.</p>
                 @endforelse
             </div>
+
+            <section class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <div class="border-b border-zinc-200 px-5 py-4 dark:border-zinc-700">
+                    <h3 class="text-base font-semibold text-[#10233D] dark:text-white">Riwayat Perubahan Saldo</h3>
+                    <p class="mt-1 text-sm text-zinc-500">Catatan perubahan saldo rekening, termasuk saldo sebelum dan sesudah diperbarui.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[760px] text-left text-sm">
+                        <thead class="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-800">
+                            <tr>
+                                <th class="px-5 py-3">Tanggal &amp; Jam</th>
+                                <th class="px-5 py-3">Bank / Kas</th>
+                                <th class="px-5 py-3 text-right">Saldo Sebelumnya</th>
+                                <th class="px-5 py-3 text-right">Saldo Terbaru</th>
+                                <th class="px-5 py-3">Diubah oleh</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                            @forelse($cashAccountBalanceHistory as $balanceChange)
+                                <tr>
+                                    <td class="whitespace-nowrap px-5 py-4 text-zinc-700 dark:text-zinc-300">{{ $balanceChange->created_at->format('d/m/Y H:i') }}</td>
+                                    <td class="px-5 py-4 font-semibold text-[#10233D] dark:text-white">{{ $balanceChange->account_name }}</td>
+                                    <td class="whitespace-nowrap px-5 py-4 text-right tabular-nums text-zinc-600 dark:text-zinc-300">
+                                        @if($balanceChange->previous_balance === null)
+                                            Belum diisi
+                                        @else
+                                            Rp {{ number_format((float) $balanceChange->previous_balance, 0, ',', '.') }}
+                                        @endif
+                                    </td>
+                                    <td class="whitespace-nowrap px-5 py-4 text-right font-semibold tabular-nums text-[#10233D] dark:text-white">Rp {{ number_format((float) $balanceChange->new_balance, 0, ',', '.') }}</td>
+                                    <td class="px-5 py-4 text-zinc-600 dark:text-zinc-300">{{ $balanceChange->changedBy?->name ?? 'Pengguna dihapus' }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5" class="px-5 py-8 text-center text-sm text-zinc-500">Belum ada riwayat perubahan saldo.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                @if($cashAccountBalanceHistory->hasPages())
+                    <div class="border-t border-zinc-200 px-5 py-4 dark:border-zinc-700">
+                        {{ $cashAccountBalanceHistory->links() }}
+                    </div>
+                @endif
+            </section>
         </section>
 
         <section class="space-y-4">

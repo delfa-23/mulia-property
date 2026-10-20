@@ -57,6 +57,45 @@
             <div class="border-b border-zinc-200 p-5 dark:border-zinc-700">
                 <h2 class="text-lg font-semibold">Riwayat Berkas Lainnya</h2>
             </div>
+            <form method="GET" action="{{ route('pemberkasan.other-documents.index') }}" class="grid gap-4 border-b border-zinc-200 bg-zinc-50 p-5 sm:grid-cols-2 xl:grid-cols-4 dark:border-zinc-700 dark:bg-zinc-800/40">
+                <div>
+                    <label for="document-search" class="mb-1 block text-sm font-medium">Cari</label>
+                    <input id="document-search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Customer, kavling, atau nama file" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                </div>
+                <div>
+                    <label for="document-property" class="mb-1 block text-sm font-medium">Perumahan</label>
+                    <select id="document-property" name="property_id" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                        <option value="">Semua perumahan</option>
+                        @foreach($properties as $property)
+                            <option value="{{ $property->id }}" @selected(($filters['property_id'] ?? null) == $property->id)>{{ $property->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="document-type" class="mb-1 block text-sm font-medium">Jenis berkas</label>
+                    <select id="document-type" name="document_type" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                        <option value="">Semua jenis</option>
+                        @foreach($documentTypes as $documentType)
+                            <option value="{{ $documentType }}" @selected(($filters['document_type'] ?? null) === $documentType)>{{ $documentType }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="document-status" class="mb-1 block text-sm font-medium">Status upload</label>
+                    <select id="document-status" name="status" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900">
+                        <option value="">Semua status</option>
+                        @foreach(['pending' => 'Menunggu upload', 'uploading' => 'Sedang diunggah', 'uploaded' => 'Tersimpan', 'failed' => 'Gagal'] as $statusValue => $statusLabel)
+                            <option value="{{ $statusValue }}" @selected(($filters['status'] ?? null) === $statusValue)>{{ $statusLabel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="flex items-end gap-2 sm:col-span-2 xl:col-span-4">
+                    <button type="submit" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">Terapkan filter</button>
+                    @if($filters !== [])
+                        <a href="{{ route('pemberkasan.other-documents.index') }}" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-white dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700">Reset</a>
+                    @endif
+                </div>
+            </form>
             <div class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 @forelse($documents as $document)
                     <article class="flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:justify-between">

@@ -78,7 +78,7 @@ class DashboardController extends Controller
             'booking' => ['label' => 'Booking', 'color' => '#eb5120'],
             'process' => ['label' => 'Proses Berkas', 'color' => '#ff9100'],
             'akad' => ['label' => 'Akad', 'color' => '#1e3a5f'],
-            'finish' => ['label' => 'Finish', 'color' => '#009851'],
+            'finish' => ['label' => 'Serah Terima Rumah', 'color' => '#009851'],
             'cancelled' => ['label' => 'Dibatalkan', 'color' => '#ef4444'],
         ];
         $bookingStatusChart = collect($bookingStatusDefinitions)
@@ -161,9 +161,28 @@ class DashboardController extends Controller
             ->get();
         $sitePlanLots = $propertyId
             ? Lot::query()
-                ->with('block')
+                ->with([
+                    'block',
+                    'bookings' => fn ($query) => $query
+                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                        ->with(['customer', 'sales'])
+                        ->latest('id'),
+                ])
                 ->whereHas('block', fn ($query) => $query->where('property_id', $propertyId))
                 ->orderBy('lot_number')
+                ->get()
+            : collect();
+        $sitePlanAreas = $selectedProperty
+            ? $selectedProperty->sitePlanAreas()
+                ->where('site_plan_path', $selectedProperty->site_plan_path)
+                ->with([
+                    'lot.block',
+                    'lot.bookings' => fn ($query) => $query
+                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                        ->with(['customer', 'sales'])
+                        ->latest('id'),
+                ])
+                ->orderBy('id')
                 ->get()
             : collect();
 
@@ -174,6 +193,7 @@ class DashboardController extends Controller
             'blocks',
             'lots',
             'sitePlanLots',
+            'sitePlanAreas',
             'propertyId',
             'blockId',
             'lotId',

@@ -7,8 +7,12 @@ use App\Models\Alert;
 use App\Models\Division;
 use App\Models\Lot;
 use App\Models\Property;
+use App\Notifications\AlertActivity;
+use App\Services\AlertNotificationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -19,14 +23,23 @@ class AlertController extends Controller
         $user = $request->user();
         abort_unless($user?->isAdmin() || $user?->hasValidDivisionAssignment(), 403);
 
+        $user->unreadNotifications()
+            ->where('type', AlertActivity::class)
+            ->where('data->event', 'resolved')
+            ->update(['read_at' => now()]);
+
         $alerts = Alert::query()
             ->with(['lot.block.property', 'createdBy.division', 'resolvedBy', 'recipientDivisions'])
             ->when(
                 ! $user->isAdmin(),
-                fn ($query) => $query->whereHas(
-                    'recipientDivisions',
-                    fn ($divisions) => $divisions->whereKey($user->division_id),
-                ),
+                fn (Builder $query) => $query->where(function (Builder $visibleAlerts) use ($user): void {
+                    $visibleAlerts
+                        ->whereHas(
+                            'recipientDivisions',
+                            fn (Builder $divisions) => $divisions->whereKey($user->division_id),
+                        )
+                        ->orWhere('created_by', $user->id);
+                }),
             )
             ->latest()
             ->paginate(20);
@@ -34,6 +47,7 @@ class AlertController extends Controller
         return view('admin.alerts.index', [
             'alerts' => $alerts,
             'isAdmin' => $user->isAdmin(),
+            'divisionId' => $user->division_id,
         ]);
     }
 
@@ -56,7 +70,7 @@ class AlertController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, AlertNotificationService $alertNotifications): RedirectResponse
     {
         $this->authorizeSender($request);
 
@@ -85,6 +99,7 @@ class AlertController extends Controller
 
         $alert = Alert::create($validated);
         $alert->recipientDivisions()->sync($recipientDivisionIds);
+        $alertNotifications->notifyReceived($alert);
 
         return redirect()->route('alerts.create')->with(
             'success',
@@ -94,9 +109,27 @@ class AlertController extends Controller
         );
     }
 
-    public function resolve(Request $request, Alert $alert): RedirectResponse
+    public function resolve(Request $request, Alert $alert, AlertNotificationService $alertNotifications): RedirectResponse
     {
-        $alert->update(['is_resolved' => true, 'resolved_by' => $request->user()->id, 'resolved_at' => now()]);
+        $user = $request->user();
+        $isRecipient = $user?->hasValidDivisionAssignment()
+            && $alert->recipientDivisions()->where('divisions.id', $user->division_id)->exists();
+        abort_unless($user?->isAdmin() || $isRecipient, 403);
+
+        DB::transaction(function () use ($alert, $user, $alertNotifications): void {
+            $lockedAlert = Alert::query()->lockForUpdate()->findOrFail($alert->id);
+
+            if ($lockedAlert->is_resolved) {
+                return;
+            }
+
+            $lockedAlert->update([
+                'is_resolved' => true,
+                'resolved_by' => $user->id,
+                'resolved_at' => now(),
+            ]);
+            $alertNotifications->notifyResolved($lockedAlert, $user);
+        });
 
         return back()->with('success', 'Alert berhasil diselesaikan.');
     }

@@ -19,6 +19,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             SetTeamUrlDefaults::class,
         ]);
+        $middleware->preventRequestForgery(except: [
+            'webhooks/midtrans/notifications',
+        ]);
 
         $middleware->alias([
             'role' => RoleMiddleware::class,

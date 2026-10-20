@@ -51,7 +51,7 @@ test('construction stage can keep its own order when updating', function () {
     $response->assertSessionDoesntHaveErrors();
 });
 
-test('construction stage rejects an overlapping progress range', function () {
+test('construction stage accepts a shared progress range', function () {
     $user = User::factory()->create(['role' => 'admin']);
     ConstructionStage::create([
         'name' => 'Tahap Pertama',
@@ -61,14 +61,19 @@ test('construction stage rejects an overlapping progress range', function () {
     ]);
 
     $response = $this->actingAs($user)->post(route('admin.construction-stages.store'), [
-        'name' => 'Tahap Bertabrakan',
+        'name' => 'Tahap Persentase Sama',
         'order' => 2,
-        'min_progress' => 8,
-        'max_progress' => 20,
+        'min_progress' => 1,
+        'max_progress' => 10,
     ]);
 
-    $response->assertSessionHasErrors('min_progress');
-    expect(ConstructionStage::query()->where('name', 'Tahap Bertabrakan')->exists())->toBeFalse();
+    $response->assertRedirect(route('admin.construction-stages.index'));
+    $response->assertSessionDoesntHaveErrors();
+    $this->assertDatabaseHas('construction_stages', [
+        'name' => 'Tahap Persentase Sama',
+        'min_progress' => 1,
+        'max_progress' => 10,
+    ]);
 });
 
 test('construction stage accepts an adjacent progress range', function () {

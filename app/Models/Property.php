@@ -50,6 +50,11 @@ class Property extends Model
         );
     }
 
+    public function sitePlanAreas(): HasMany
+    {
+        return $this->hasMany(SitePlanArea::class);
+    }
+
     public function commonFacilities(): HasMany
     {
         return $this->hasMany(CommonFacility::class);

@@ -45,9 +45,12 @@
         <x-site-plan-map
             :property="$selectedProperty"
             :lots="$sitePlanLots"
+            :areas="$sitePlanAreas"
             :selected-lot-id="$lotId"
-            :manage-url="$selectedProperty ? route('admin.properties.edit', $selectedProperty) . ($selectedProperty->site_plan_path ? '#site-plan-editor' : '#site_plan') : null"
+            :manage-url="$selectedProperty ? route('admin.properties.edit', $selectedProperty) . ($selectedProperty->site_plan_path ? '#site-plan-editor' : '#site-plan-upload') : null"
             :dashboard-url="route('admin.dashboard')"
+            detail-mode="modal"
+            management-role="admin"
         />
 
         {{-- MASTER DATA --}}

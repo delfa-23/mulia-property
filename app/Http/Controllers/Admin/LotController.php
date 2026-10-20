@@ -8,7 +8,11 @@ use App\Models\Lot;
 use App\Models\Property;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use RuntimeException;
 
 class LotController extends Controller
 {
@@ -100,9 +104,25 @@ class LotController extends Controller
                 'nullable',
                 'string',
             ],
+            'images' => ['nullable', 'array'],
+            'images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
-        $block->lots()->create($validated);
+        $images = array_values(array_filter(
+            $validated['images'] ?? [],
+            fn (mixed $image): bool => $image instanceof UploadedFile,
+        ));
+        unset($validated['images']);
+        $imagePaths = array_map(
+            fn (UploadedFile $image): string => $this->storeLotImage($image),
+            $images,
+        );
+
+        $block->lots()->create([
+            ...$validated,
+            'image_path' => $imagePaths[0] ?? null,
+            'image_paths' => array_slice($imagePaths, 1),
+        ]);
 
         return redirect()
             ->route('admin.properties.blocks.lots.index', [$property, $block])
@@ -120,6 +140,8 @@ class LotController extends Controller
             404
         );
 
+        $isConstructionRoute = request()->routeIs('pembangunan.*');
+
         return view('admin.lots.edit', [
             'property' => $property,
             'block' => $block,
@@ -129,6 +151,12 @@ class LotController extends Controller
                 old('lot_number', $lot->lot_number)
             ),
             'routePrefix' => 'admin.properties',
+            'backUrl' => $isConstructionRoute
+                ? route('pembangunan.dashboard', ['property_id' => $property->id])
+                : route('admin.properties.blocks.lots.index', [$property, $block]),
+            'updateUrl' => $isConstructionRoute
+                ? route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot])
+                : route('admin.properties.blocks.lots.update', [$property, $block, $lot]),
         ]);
     }
 
@@ -168,13 +196,40 @@ class LotController extends Controller
                 'nullable',
                 'string',
             ],
+            'images' => ['nullable', 'array'],
+            'images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'remove_images' => ['nullable', 'array'],
+            'remove_images.*' => ['string', 'distinct', Rule::in($lot->imagePaths())],
         ]);
 
+        $images = array_values(array_filter(
+            $validated['images'] ?? [],
+            fn (mixed $image): bool => $image instanceof UploadedFile,
+        ));
+        $removedImagePaths = $validated['remove_images'] ?? [];
+        unset($validated['images'], $validated['remove_images']);
+
+        $newImagePaths = array_map(
+            fn (UploadedFile $image): string => $this->storeLotImage($image),
+            $images,
+        );
+        $imagePaths = array_values(array_diff($lot->imagePaths(), $removedImagePaths));
+        $imagePaths = [...$imagePaths, ...$newImagePaths];
+
+        $validated['image_path'] = $imagePaths[0] ?? null;
+        $validated['image_paths'] = array_slice($imagePaths, 1);
         $lot->update($validated);
 
-        return redirect()
-            ->route('admin.properties.blocks.lots.index', [$property, $block])
-            ->with('success', 'Kavling berhasil diperbarui.');
+        foreach ($removedImagePaths as $imagePath) {
+            Storage::disk('site-plans')->delete($imagePath);
+            Storage::disk('public')->delete($imagePath);
+        }
+
+        $redirect = request()->routeIs('pembangunan.*')
+            ? redirect()->route('pembangunan.dashboard', ['property_id' => $property->id])
+            : redirect()->route('admin.properties.blocks.lots.index', [$property, $block]);
+
+        return $redirect->with('success', 'Kavling berhasil diperbarui.');
     }
 
     public function destroy(
@@ -202,7 +257,13 @@ class LotController extends Controller
                 ->with('error', 'Kavling tidak dapat dihapus karena masih memiliki data terkait.');
         }
 
+        $imagePaths = $lot->imagePaths();
         $lot->delete();
+
+        foreach ($imagePaths as $imagePath) {
+            Storage::disk('site-plans')->delete($imagePath);
+            Storage::disk('public')->delete($imagePath);
+        }
 
         return redirect()
             ->route('admin.properties.blocks.lots.index', [$property, $block])
@@ -267,5 +328,16 @@ class LotController extends Controller
         }
 
         return $lotNumber;
+    }
+
+    private function storeLotImage(UploadedFile $image): string
+    {
+        $path = $image->store('lots', 'site-plans');
+
+        if (! is_string($path)) {
+            throw new RuntimeException('Foto kavling gagal disimpan.');
+        }
+
+        return $path;
     }
 }

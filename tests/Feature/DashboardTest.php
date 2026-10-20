@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\BankProcess;
 use App\Models\Block;
 use App\Models\Booking;
 use App\Models\Budget;
@@ -7,10 +8,12 @@ use App\Models\ConstructionProgress;
 use App\Models\ConstructionStage;
 use App\Models\Customer;
 use App\Models\Division;
+use App\Models\DocumentProcess;
 use App\Models\ExpenseTransaction;
 use App\Models\IncomeTransaction;
 use App\Models\Lot;
 use App\Models\Property;
+use App\Models\Sp3;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
@@ -313,6 +316,9 @@ test('construction dashboard filters lot progress statistics by property and blo
         ->get(route('pembangunan.dashboard', ['block_id' => $block->id, 'lot_id' => $lot->id]));
 
     $response->assertOk()
+        ->assertSee('Tahapan Pembangunan')
+        ->assertSee('Fasilitas Umum')
+        ->assertSee('Denah Perumahan')
         ->assertViewHas('stats', fn (array $stats): bool => $stats['total_properties'] === 1
             && $stats['total_blocks'] === 1
             && $stats['total_lots'] === 1
@@ -320,9 +326,185 @@ test('construction dashboard filters lot progress statistics by property and blo
             && $stats['finish_lots'] === 0);
 
     $response->assertViewHas('lotStatusChart', fn (Collection $chart): bool => (int) data_get($chart->firstWhere('status', 'available'), 'value') === 1
-        && (int) data_get($chart->firstWhere('status', 'finish'), 'value') === 0)
-        ->assertViewHas('monthlyPhysicalProgressChart', fn (Collection $chart): bool => $chart->count() === 6
-            && $chart->sum('updates') === 0);
+        && (int) data_get($chart->firstWhere('status', 'finish'), 'value') === 0
+        && $chart->firstWhere('status', 'blocked') === null)
+        ->assertDontSee('Tren Progress Fisik');
+});
+
+test('construction dashboard summarizes filtered finances and booking handover progress', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Ringkasan']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $otherBlock = Block::create(['property_id' => $property->id, 'name' => 'B']);
+    $customer = Customer::create(['name' => 'Pembeli Dashboard']);
+    $createLot = fn (string $number, string $status, ?Block $lotBlock = null): Lot => Lot::create([
+        'block_id' => ($lotBlock ?? $block)->id,
+        'lot_number' => $number,
+        'house_price' => 500000000,
+        'status' => $status,
+    ]);
+    $createBooking = function (Lot $lot, string $status) use ($customer): Booking {
+        return Booking::create([
+            'lot_id' => $lot->id,
+            'customer_id' => $customer->id,
+            'booking_date' => '2026-10-01',
+            'status' => $status,
+        ]);
+    };
+    $availableLot = $createLot('01', 'available');
+    $createLot('02', 'blocked');
+    $bookedLot = $createLot('03', 'booked');
+    $processLot = $createLot('04', 'process');
+    $sp3Lot = $createLot('05', 'process');
+    $akadLot = $createLot('06', 'akad');
+    $completedLot = $createLot('07', 'finish');
+    $incompleteLot = $createLot('08', 'finish');
+    $otherBlockLot = $createLot('09', 'available', $otherBlock);
+
+    $createBooking($bookedLot, 'booking');
+    $processBooking = $createBooking($processLot, 'process');
+    $sp3Booking = $createBooking($sp3Lot, 'process');
+    $createBooking($akadLot, 'akad');
+    $createBooking($completedLot, 'finish');
+    $createBooking($incompleteLot, 'finish');
+    Sp3::create([
+        'booking_id' => $processBooking->id,
+        'status' => 'pending',
+    ]);
+    Sp3::create([
+        'booking_id' => $sp3Booking->id,
+        'status' => 'issued',
+    ]);
+
+    $firstStage = $property->constructionStages()->create([
+        'name' => 'Pekerjaan Struktur',
+        'order' => 1,
+        'min_progress' => 0,
+        'max_progress' => 100,
+    ]);
+    $secondStage = $property->constructionStages()->create([
+        'name' => 'Pekerjaan Finishing',
+        'order' => 2,
+        'min_progress' => 0,
+        'max_progress' => 100,
+    ]);
+    foreach ([$firstStage, $secondStage] as $stage) {
+        ConstructionProgress::create([
+            'lot_id' => $completedLot->id,
+            'stage_id' => $stage->id,
+            'progress' => 100,
+            'updated_by' => $user->id,
+        ]);
+    }
+    ConstructionProgress::create([
+        'lot_id' => $incompleteLot->id,
+        'stage_id' => $firstStage->id,
+        'progress' => 100,
+        'updated_by' => $user->id,
+    ]);
+
+    Budget::create([
+        'property_id' => $property->id,
+        'lot_id' => $availableLot->id,
+        'purpose' => 'pembangunan',
+        'name' => 'RAB kavling A-01',
+        'category' => 'Struktur',
+        'amount' => 1000,
+    ]);
+    Budget::create([
+        'property_id' => $property->id,
+        'name' => 'RAB umum',
+        'category' => 'Infrastruktur',
+        'purpose' => 'pembangunan',
+        'amount' => 250,
+    ]);
+    Budget::create([
+        'property_id' => $property->id,
+        'lot_id' => $otherBlockLot->id,
+        'purpose' => 'pembangunan',
+        'name' => 'RAB block lain',
+        'category' => 'Struktur',
+        'amount' => 9000,
+    ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'lot_id' => $availableLot->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-DASHBOARD-LOT',
+        'transaction_date' => '2026-10-01',
+        'category' => 'Struktur',
+        'amount' => 300,
+    ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-DASHBOARD-GENERAL',
+        'transaction_date' => '2026-10-01',
+        'category' => 'Infrastruktur',
+        'amount' => 50,
+    ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'lot_id' => $otherBlockLot->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-DASHBOARD-OTHER-BLOCK',
+        'transaction_date' => '2026-10-01',
+        'category' => 'Struktur',
+        'amount' => 9000,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->get(route('pembangunan.dashboard', ['block_id' => $block->id]));
+
+    $response->assertSee('RAB Pembangunan')
+        ->assertSee('Total Pengeluaran')
+        ->assertSee('Deviasi Anggaran')
+        ->assertSee('Tahapan Pembangunan')
+        ->assertSee('Fasilitas Umum')
+        ->assertSee('Denah Perumahan')
+        ->assertSee('Rp 1.250')
+        ->assertSee('Rp 350')
+        ->assertSee('Rp 900')
+        ->assertSee('SP3')
+        ->assertSee('Serah Terima Rumah')
+        ->assertViewHas('stats', fn (array $stats): bool => $stats['total_lots'] === 8
+            && $stats['booked_lots'] === 2
+            && $stats['process_lots'] === 1
+            && $stats['sp3_lots'] === 1
+            && $stats['akad_lots'] === 2
+            && $stats['finish_lots'] === 1)
+        ->assertViewHas('lotStatusChart', fn (Collection $chart): bool => (int) data_get($chart->firstWhere('status', 'sp3'), 'value') === 1
+            && (int) data_get($chart->firstWhere('status', 'finish'), 'value') === 1
+            && (int) data_get($chart->firstWhere('status', 'akad'), 'value') === 2
+            && $chart->pluck('status')->all() === ['available', 'booked', 'process', 'sp3', 'akad', 'finish', 'cancelled']
+            && $chart->firstWhere('status', 'blocked') === null)
+        ->assertViewHas('totalBudget', fn (int|float|string $total): bool => (float) $total === 1250.0)
+        ->assertViewHas('totalExpense', fn (int|float|string $total): bool => (float) $total === 350.0)
+        ->assertViewHas('totalConstructionDeviation', fn (int|float|string $total): bool => (float) $total === 900.0);
+});
+
+test('pembangunan staff no longer see the construction finance menu link', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('pembangunan.dashboard'))
+        ->assertDontSee('href="'.route('finance.index').'"', false)
+        ->assertSee('Tahapan Pembangunan')
+        ->assertSee(route('pembangunan.property-construction-stages.index'), false);
 });
 
 test('document processing dashboard filters bookings by property and lot', function () {
@@ -375,6 +557,260 @@ test('document processing dashboard filters bookings by property and lot', funct
         ->assertViewHas('stats', fn (array $stats): bool => $stats['total_bookings'] === 1)
         ->assertViewHas('workflowChart', fn (Collection $chart): bool => (int) data_get($chart->firstWhere('key', 'total_bookings'), 'value') === 1)
         ->assertViewHas('monthlyBookingChart', fn (Collection $chart): bool => (int) data_get($chart->firstWhere('key', '2026-09'), 'bookings') === 1);
+});
+
+test('document processing dashboard filters workflow modal bookings by property and lot', function () {
+    $division = Division::create([
+        'name' => 'Pemberkasan',
+        'slug' => 'pemberkasan',
+        'is_active' => true,
+    ]);
+    $documentUser = User::factory()->create([
+        'role' => 'staff_pemberkasan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create([
+        'name' => 'Perumahan Workflow',
+        'site_plan_path' => 'site-plans/workflow.png',
+    ]);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '07',
+        'house_price' => 500000000,
+        'status' => 'process',
+        'map_coordinates' => ['x' => 10, 'y' => 15, 'width' => 5, 'height' => 8],
+    ]);
+    $customer = Customer::create(['name' => 'Pembeli SP3']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'process',
+    ]);
+    DocumentProcess::create([
+        'booking_id' => $booking->id,
+        'status' => 'incomplete',
+        'bi_checking_status' => 'processing',
+    ]);
+    BankProcess::create([
+        'booking_id' => $booking->id,
+        'bank_name' => 'Bank Contoh',
+        'status' => 'approved',
+    ]);
+    Sp3::create([
+        'booking_id' => $booking->id,
+        'sp3_number' => 'SP3-007',
+        'status' => 'issued',
+    ]);
+    $otherLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '08',
+        'house_price' => 500000000,
+        'status' => 'process',
+        'map_coordinates' => ['x' => 20, 'y' => 15, 'width' => 5, 'height' => 8],
+    ]);
+    $otherBooking = Booking::create([
+        'lot_id' => $otherLot->id,
+        'customer_id' => Customer::create(['name' => 'Pembeli Kavling Lain'])->id,
+        'booking_date' => '2026-10-02',
+        'status' => 'process',
+    ]);
+    Sp3::create([
+        'booking_id' => $otherBooking->id,
+        'sp3_number' => 'SP3-008',
+        'status' => 'issued',
+    ]);
+    $otherProperty = Property::create(['name' => 'Perumahan Lain']);
+    $otherBlock = Block::create(['property_id' => $otherProperty->id, 'name' => 'B']);
+    $otherPropertyLot = Lot::create([
+        'block_id' => $otherBlock->id,
+        'lot_number' => '01',
+        'house_price' => 500000000,
+        'status' => 'process',
+        'map_coordinates' => ['x' => 10, 'y' => 15, 'width' => 5, 'height' => 8],
+    ]);
+    $otherPropertyBooking = Booking::create([
+        'lot_id' => $otherPropertyLot->id,
+        'customer_id' => Customer::create(['name' => 'Pembeli Perumahan Lain'])->id,
+        'booking_date' => '2026-10-03',
+        'status' => 'process',
+    ]);
+    Sp3::create([
+        'booking_id' => $otherPropertyBooking->id,
+        'sp3_number' => 'SP3-009',
+        'status' => 'issued',
+    ]);
+
+    $response = $this->actingAs($documentUser)
+        ->get(route('pemberkasan.dashboard', [
+            'property_id' => $property->id,
+            'workflow' => 'sp3_issued',
+            'workflow_property_id' => $property->id,
+            'workflow_lot_id' => $lot->id,
+        ]));
+
+    $response->assertOk()
+        ->assertSee('BI Checking')
+        ->assertSee('Berkas Belum Lengkap')
+        ->assertSee('Akad')
+        ->assertSee('Serah Terima Rumah')
+        ->assertDontSee('Bank Disetujui')
+        ->assertSee('Pembeli SP3')
+        ->assertSee('A/07')
+        ->assertSee('data-workflow-bookings-modal', false)
+        ->assertSee('data-workflow-bookings-modal-open', false)
+        ->assertSee('Detail kategori')
+        ->assertSee('name="workflow_property_id"', false)
+        ->assertSee('name="workflow_lot_id"', false)
+        ->assertSee('Lihat detail booking')
+        ->assertSee(route('pemberkasan.dashboard', ['property_id' => $property->id, 'workflow' => 'sp3_issued']), false)
+        ->assertSee('data-lot-status="SP3"', false)
+        ->assertViewHas('workflowChart', fn (Collection $chart): bool => $chart->pluck('key')->all() === [
+            'total_bookings',
+            'bi_checking',
+            'incomplete_documents',
+            'complete_documents',
+            'bank_processing',
+            'sp3_issued',
+            'waiting_akad',
+            'finish',
+            'revision',
+        ])
+        ->assertViewHas('workflowBookings', fn ($bookings): bool => $bookings->total() === 1
+            && $bookings->getCollection()->first()->is($booking));
+
+    $propertyFilteredResponse = $this->actingAs($documentUser)
+        ->get(route('pemberkasan.dashboard', [
+            'property_id' => $property->id,
+            'workflow' => 'sp3_issued',
+            'workflow_property_id' => $otherProperty->id,
+        ]));
+
+    $propertyFilteredResponse->assertSee('Pembeli Perumahan Lain')
+        ->assertViewHas('workflowBookings', fn ($bookings): bool => $bookings->total() === 1
+            && $bookings->getCollection()->first()->is($otherPropertyBooking));
+
+    $lotFilteredResponse = $this->actingAs($documentUser)
+        ->get(route('pemberkasan.dashboard', [
+            'property_id' => $property->id,
+            'workflow' => 'sp3_issued',
+            'workflow_property_id' => $otherProperty->id,
+            'workflow_lot_id' => $otherPropertyLot->id,
+        ]));
+
+    $lotFilteredResponse->assertSee('Pembeli Perumahan Lain')
+        ->assertViewHas('workflowBookings', fn ($bookings): bool => $bookings->total() === 1
+            && $bookings->getCollection()->first()->is($otherPropertyBooking));
+});
+
+test('construction finance and document dashboards show a read only site plan', function () {
+    $divisionUsers = [];
+
+    foreach ([
+        'pembangunan' => 'staff_pembangunan',
+        'finance' => 'staff_finance',
+        'pemberkasan' => 'staff_pemberkasan',
+    ] as $divisionSlug => $role) {
+        $division = Division::create([
+            'name' => ucfirst($divisionSlug),
+            'slug' => $divisionSlug,
+            'is_active' => true,
+        ]);
+        $divisionUsers[$divisionSlug] = User::factory()->create([
+            'role' => $role,
+            'division_id' => $division->id,
+        ]);
+    }
+
+    $property = Property::create([
+        'name' => 'Perumahan Denah Baca Saja',
+        'site_plan_path' => 'site-plans/read-only.png',
+    ]);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 500000000,
+        'status' => 'available',
+        'map_coordinates' => ['x' => 10, 'y' => 15, 'width' => 5, 'height' => 8],
+    ]);
+
+    $dashboardRequests = [
+        ['pembangunan', 'pembangunan.dashboard', ['property_id' => $property->id], true],
+        ['finance', 'keuangan.cash-position.index', ['site_plan_property_id' => $property->id], false],
+        ['pemberkasan', 'pemberkasan.dashboard', ['property_id' => $property->id], false],
+    ];
+
+    foreach ($dashboardRequests as [$divisionSlug, $routeName, $query, $canEditLot]) {
+        $response = $this->actingAs($divisionUsers[$divisionSlug])
+            ->get(route($routeName, $query))
+            ->assertSee('data-site-plan-viewer', false)
+            ->assertSee('Kavling A/01', false)
+            ->assertViewHas('sitePlanLots', fn (Collection $lots): bool => $lots->contains('id', $lot->id));
+
+        if ($canEditLot) {
+            $response->assertSee(route('pembangunan.properties.blocks.lots.edit', [$property, $block, $lot]), false)
+                ->assertSee('data-lot-action-label="Edit kavling"', false);
+        } else {
+            $response->assertSee('data-lot-action-url=""', false)
+                ->assertDontSee(route('admin.properties.blocks.lots.edit', [$property, $block, $lot]), false);
+        }
+    }
+});
+
+test('construction staff can edit a lot from its site plan but other divisions cannot', function () {
+    $constructionDivision = Division::create([
+        'name' => 'Pembangunan',
+        'slug' => 'pembangunan',
+        'is_active' => true,
+    ]);
+    $constructionUser = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $constructionDivision->id,
+    ]);
+    $financeDivision = Division::create([
+        'name' => 'Finance',
+        'slug' => 'finance',
+        'is_active' => true,
+    ]);
+    $financeUser = User::factory()->create([
+        'role' => 'staff_finance',
+        'division_id' => $financeDivision->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Edit Kavling']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => 'A-01',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
+    $editUrl = route('pembangunan.properties.blocks.lots.edit', [$property, $block, $lot]);
+
+    $this->actingAs($constructionUser)
+        ->get($editUrl)
+        ->assertSee('Edit Kavling A-01')
+        ->assertSee(route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot]), false)
+        ->assertSee(route('pembangunan.dashboard', ['property_id' => $property->id]), false);
+
+    $this->actingAs($constructionUser)
+        ->put(route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot]), [
+            'lot_number' => '01',
+            'house_price' => 525000000,
+            'status' => 'blocked',
+            'notes' => 'Menunggu pemeriksaan lapangan',
+        ])
+        ->assertRedirect(route('pembangunan.dashboard', ['property_id' => $property->id]))
+        ->assertSessionHas('success', 'Kavling berhasil diperbarui.');
+
+    expect($lot->fresh()->house_price)->toBe('525000000.00')
+        ->and($lot->fresh()->status)->toBe('blocked')
+        ->and($lot->fresh()->notes)->toBe('Menunggu pemeriksaan lapangan');
+
+    $this->actingAs($financeUser)
+        ->get($editUrl)
+        ->assertForbidden();
 });
 
 test('marketing dashboard filters property data and shows block with lot number', function () {
@@ -472,6 +908,8 @@ test('marketing dashboard filters property data and shows block with lot number'
         ->get(route('marketing.dashboard', ['property_id' => $property->id]));
 
     $response->assertSee('Total Harga Kavling')
+        ->assertSee('Serah Terima Rumah')
+        ->assertDontSee('Booking Finish')
         ->assertSee('Total Pengeluaran')
         ->assertDontSee('Total RAB')
         ->assertDontSee('Deviasi RAB')

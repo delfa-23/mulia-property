@@ -82,16 +82,18 @@
                             >
                                 Project Perumahan
                             </flux:sidebar.item>
+                        @endif
 
-                            <flux:sidebar.item
-                                icon="building-office"
-                                :href="route('admin.property-construction-stages.index')"
-                                :current="request()->routeIs('admin.property-construction-stages.*')"
-                                wire:navigate
-                            >
-                                Tahapan per Perumahan
-                            </flux:sidebar.item>
+                        <flux:sidebar.item
+                            icon="building-office"
+                            :href="auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.property-construction-stages.index')"
+                            :current="request()->routeIs('admin.property-construction-stages.*', 'pembangunan.property-construction-stages.*')"
+                            wire:navigate
+                        >
+                            Tahapan Pembangunan
+                        </flux:sidebar.item>
 
+                        @if(auth()->user()->role === 'admin')
                             <flux:sidebar.item
                                 icon="building-office-2"
                                 :href="route('admin.common-facilities.index')"
@@ -129,17 +131,6 @@
                             Progress Fasilitas Umum
                         </flux:sidebar.item>
 
-                        @if(auth()->user()->role !== 'admin')
-                            <flux:sidebar.item
-                                icon="banknotes"
-                                :href="route('finance.index')"
-                                :current="request()->routeIs('finance.*')"
-                                wire:navigate
-                            >
-                                Keuangan Pembangunan
-                            </flux:sidebar.item>
-                        @endif
-
                     </flux:sidebar.group>
 
                 @endif
@@ -166,24 +157,6 @@
                             wire:navigate
                         >
                             Prospek
-                        </flux:sidebar.item>
-
-                        <flux:sidebar.item
-                            icon="phone"
-                            :href="route('marketing.follow-ups.index')"
-                            :current="request()->routeIs('marketing.follow-ups.*')"
-                            wire:navigate
-                        >
-                            Follow-up CRM
-                        </flux:sidebar.item>
-
-                        <flux:sidebar.item
-                            icon="calendar-days"
-                            :href="route('marketing.calendar')"
-                            :current="request()->routeIs('marketing.calendar')"
-                            wire:navigate
-                        >
-                            Kalender CRM
                         </flux:sidebar.item>
 
                         <flux:sidebar.item
@@ -251,6 +224,15 @@
                             wire:navigate
                         >
                             Booking
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item
+                            icon="credit-card"
+                            :href="route('marketing.payments.index')"
+                            :current="request()->routeIs('marketing.payments.*')"
+                            wire:navigate
+                        >
+                            Pembayaran
                         </flux:sidebar.item>
 
                     </flux:sidebar.group>
@@ -322,6 +304,7 @@
                 {{-- MENU LAINNYA --}}
                 @if(auth()->user()->isAdmin() || auth()->user()->hasValidDivisionAssignment())
                     <flux:sidebar.group :heading="__('Lainnya')" class="grid">
+
                         <flux:sidebar.item
                             icon="document-text"
                             :href="route('reports.progress.index')"
@@ -346,7 +329,15 @@
                             :current="request()->routeIs('alerts.index')"
                             wire:navigate
                         >
-                            Inbox Alert
+                            <span class="flex w-full items-center justify-between gap-2">
+                                <span>Inbox Alert</span>
+                                <span
+                                    data-alert-count
+                                    data-endpoint="{{ route('notifications.alerts.pending-count') }}"
+                                    aria-label="Alert belum dibaca"
+                                    class="hidden min-w-5 rounded-full bg-white px-1.5 py-0.5 text-center text-xs font-bold leading-none text-orange-700"
+                                ></span>
+                            </span>
                         </flux:sidebar.item>
 
                         @if(auth()->user()->isAdmin())

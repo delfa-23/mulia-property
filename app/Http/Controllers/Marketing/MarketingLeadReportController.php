@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Marketing;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\MarketingLead;
-use App\Models\MarketingLeadFollowUp;
 use App\Models\Property;
 use App\Models\User;
 use App\Services\MarketingLeadAccess;
@@ -73,9 +72,7 @@ class MarketingLeadReportController extends Controller
         $bookedLeadCount = (clone $bookingQuery)->distinct()->count('lead_id');
         $akadBookingQuery = (clone $bookingQuery)->whereIn('status', ['akad', 'finish']);
         $akadBookingCount = (clone $akadBookingQuery)->count();
-        $akadLeadCount = (clone $akadBookingQuery)->distinct()->count('lead_id');
 
-        $categoryCounts = (clone $leads)->selectRaw('category, COUNT(*) AS total')->groupBy('category')->orderBy('category')->get();
         $sourceCounts = (clone $leads)->selectRaw('source, COUNT(*) AS total')->groupBy('source')->orderBy('source')->get();
         $marketers = User::query()
             ->whereIn('role', ['staff_marketing', 'tl_marketing'])
@@ -84,7 +81,7 @@ class MarketingLeadReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $performance = $marketers->map(function (User $marketer) use ($leads, $leadIds, $from, $to, $filters): array {
+        $performance = $marketers->map(function (User $marketer) use ($leads, $from, $to, $filters): array {
             $marketerLeads = (clone $leads)->where('assigned_user_id', $marketer->id);
             $marketerLeadIds = (clone $marketerLeads)->select('marketing_leads.id');
             $marketerBookings = Booking::query()
@@ -92,9 +89,6 @@ class MarketingLeadReportController extends Controller
                 ->where('status', '!=', 'cancelled')
                 ->whereBetween('booking_date', [$from, $to])
                 ->when(isset($filters['property_id']), fn (Builder $query) => $query->whereHas('lot.block', fn (Builder $blocks) => $blocks->where('property_id', $filters['property_id'])));
-            $assignedTasks = MarketingLeadFollowUp::query()
-                ->where('assigned_user_id', $marketer->id)
-                ->whereHas('lead', fn (Builder $query) => $query->whereIn('id', $leadIds));
 
             return [
                 'user' => $marketer,
@@ -105,15 +99,8 @@ class MarketingLeadReportController extends Controller
                     ->whereBetween('scheduled_at', [$from.' 00:00:00', $to.' 23:59:59']))->count(),
                 'bookings' => (clone $marketerBookings)->count(),
                 'akad' => (clone $marketerBookings)->whereIn('status', ['akad', 'finish'])->count(),
-                'follow_ups_completed' => (clone $assignedTasks)->where('status', 'completed')->whereBetween('completed_at', [$from.' 00:00:00', $to.' 23:59:59'])->count(),
-                'follow_ups_overdue' => (clone $assignedTasks)->whereIn('status', ['pending', 'in_progress'])->where('due_at', '<', now())->whereBetween('due_at', [$from.' 00:00:00', $to.' 23:59:59'])->count(),
             ];
         });
-
-        $followUpBase = MarketingLeadFollowUp::query()
-            ->whereHas('lead', fn (Builder $query) => $query->whereIn('id', $leadIds));
-        $completedFollowUps = (clone $followUpBase)->where('status', 'completed')->whereBetween('completed_at', [$from.' 00:00:00', $to.' 23:59:59'])->count();
-        $overdueFollowUps = (clone $followUpBase)->whereIn('status', ['pending', 'in_progress'])->where('due_at', '<', now())->whereBetween('due_at', [$from.' 00:00:00', $to.' 23:59:59'])->count();
 
         return view('marketing.crm.report', [
             'from' => $from,
@@ -130,7 +117,6 @@ class MarketingLeadReportController extends Controller
             'categories' => MarketingLead::query()->select('category')->whereNotNull('category')->distinct()->orderBy('category')->pluck('category'),
             'categoryLabels' => MarketingLead::CATEGORY_LABELS,
             'sources' => MarketingLead::query()->select('source')->whereNotNull('source')->distinct()->orderBy('source')->pluck('source'),
-            'categoryCounts' => $categoryCounts,
             'sourceCounts' => $sourceCounts,
             'performance' => $performance,
             'metrics' => [
@@ -141,11 +127,8 @@ class MarketingLeadReportController extends Controller
                 'bookings' => $bookingCount,
                 'akad_bookings' => $akadBookingCount,
                 'booked_leads' => $bookedLeadCount,
-                'akad_leads' => $akadLeadCount,
                 'lead_to_booking_rate' => $totalLeads > 0 ? round($bookedLeadCount * 100 / $totalLeads, 1) : 0,
-                'lead_to_akad_rate' => $totalLeads > 0 ? round($akadLeadCount * 100 / $totalLeads, 1) : 0,
-                'follow_ups_completed' => $completedFollowUps,
-                'follow_ups_overdue' => $overdueFollowUps,
+                'booking_to_akad_rate' => $bookingCount > 0 ? round($akadBookingCount * 100 / $bookingCount, 1) : 0,
             ],
         ]);
     }

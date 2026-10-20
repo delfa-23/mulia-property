@@ -24,6 +24,7 @@
             <form
                 method="POST"
                 action="{{ route($routePrefix.'.blocks.lots.store', [$property, $block]) }}"
+                enctype="multipart/form-data"
                 class="space-y-5"
             >
                 @csrf
@@ -75,6 +76,28 @@
                     @error('house_price')
                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                     @enderror
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Foto Kavling</label>
+                    <div data-lot-image-inputs class="mt-1 space-y-2">
+                        <div data-lot-image-field class="flex gap-2">
+                            <input
+                                type="file"
+                                name="images[]"
+                                accept="image/jpeg,image/png,image/webp"
+                                class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            >
+                            <button type="button" data-remove-lot-image-field class="rounded-lg border border-gray-300 px-3 text-lg" aria-label="Hapus pilihan foto">-</button>
+                        </div>
+                    </div>
+                    <button type="button" data-add-lot-image-field class="mt-2 rounded-lg border border-gray-300 px-3 py-1 text-sm font-medium">+ Tambah foto</button>
+                    <p class="mt-1 text-xs text-gray-500">JPG, PNG, atau WebP; maksimal 10 MB per foto.</p>
+                    @foreach($errors->get('images.*') as $imageErrors)
+                        @foreach($imageErrors as $message)
+                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                        @endforeach
+                    @endforeach
                 </div>
 
                 <div>

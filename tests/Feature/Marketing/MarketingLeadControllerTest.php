@@ -60,6 +60,26 @@ it('accepts the Cool category for leads that did not respond', function () {
     ]);
 });
 
+it('accepts Booking and Survey as prospect categories', function () {
+    $user = createMarketingLeadFeatureTestUser();
+
+    foreach (['Booking', 'Survey'] as $category) {
+        $this->actingAs($user)
+            ->post(route('marketing.leads.store'), [
+                'name' => 'Prospek '.$category,
+                'date_received' => '2026-10-14',
+                'category' => $category,
+                'source' => 'Meta Ads',
+            ])
+            ->assertRedirect(route('marketing.leads.index'));
+
+        $this->assertDatabaseHas('marketing_leads', [
+            'name' => 'Prospek '.$category,
+            'category' => $category,
+        ]);
+    }
+});
+
 it('rejects categories and sources that are not in the marketing options', function () {
     $user = createMarketingLeadFeatureTestUser();
 
@@ -67,12 +87,23 @@ it('rejects categories and sources that are not in the marketing options', funct
         ->post(route('marketing.leads.store'), [
             'name' => 'Prospek Tidak Valid',
             'date_received' => '2026-10-14',
-            'category' => 'Siap Beli',
+            'category' => 'Closing',
             'source' => 'Unknown',
         ])
         ->assertSessionHasErrors(['category', 'source']);
 
     $this->assertDatabaseCount('marketing_leads', 0);
+});
+
+it('omits standalone follow-up and calendar navigation from the prospect workspace', function () {
+    $user = createMarketingLeadFeatureTestUser();
+
+    $this->actingAs($user)
+        ->get(route('marketing.leads.index'))
+        ->assertDontSee('Follow-up CRM')
+        ->assertDontSee('Kalender CRM')
+        ->assertDontSee(route('marketing.follow-ups.index'), false)
+        ->assertDontSee(route('marketing.calendar'), false);
 });
 
 it('counts only leads linked to bookings at akad or finished status', function () {

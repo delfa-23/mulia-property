@@ -6,8 +6,6 @@
                 <p class="mt-1 text-sm text-zinc-500">Catat lead masuk, pantau kategorinya, dan lihat prospek yang sudah mencapai akad.</p>
             </div>
             <div class="flex flex-wrap gap-2">
-                <a href="{{ route('marketing.follow-ups.index') }}" class="rounded-lg border border-zinc-300 px-4 py-2.5 text-center text-sm font-semibold dark:border-zinc-600" wire:navigate>Follow-up</a>
-                <a href="{{ route('marketing.calendar') }}" class="rounded-lg border border-zinc-300 px-4 py-2.5 text-center text-sm font-semibold dark:border-zinc-600" wire:navigate>Kalender</a>
                 <a href="{{ route('marketing.reports.crm') }}" class="rounded-lg border border-zinc-300 px-4 py-2.5 text-center text-sm font-semibold dark:border-zinc-600" wire:navigate>Laporan</a>
                 <a href="{{ route('marketing.leads.create') }}" class="rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white" wire:navigate>Tambah Prospek</a>
             </div>

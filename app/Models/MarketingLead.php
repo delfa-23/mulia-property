@@ -14,13 +14,14 @@ class MarketingLead extends Model
     /** @use HasFactory<MarketingLeadFactory> */
     use HasFactory;
 
-    public const CATEGORIES = ['Cool', 'Warm', 'Hot', 'Closing', 'Cancel'];
+    public const CATEGORIES = ['Cool', 'Warm', 'Hot', 'Survey', 'Booking', 'Cancel'];
 
     public const CATEGORY_LABELS = [
         'Cool' => 'Cool (Tidak merespons)',
         'Warm' => 'Warm (Tertarik)',
-        'Hot' => 'Hot (Siap closing)',
-        'Closing' => 'Closing',
+        'Hot' => 'Hot (Siap booking)',
+        'Survey' => 'Survey (Kunjungan)',
+        'Booking' => 'Booking',
         'Cancel' => 'Cancel',
     ];
 

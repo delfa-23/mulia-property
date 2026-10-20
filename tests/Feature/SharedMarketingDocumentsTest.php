@@ -151,6 +151,57 @@ test('marketing cannot access the separate additional documents page', function 
         ->assertNotFound();
 });
 
+test('pemberkasan can filter additional document history by property type status and search', function () {
+    $division = Division::create([
+        'name' => 'Pemberkasan',
+        'slug' => 'pemberkasan',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_pemberkasan',
+        'division_id' => $division->id,
+    ]);
+    $booking = createSharedDocumentBooking('Customer Filter');
+    $document = PemberkasanDocument::query()->create([
+        'booking_id' => $booking->id,
+        'property_id' => $booking->lot->block->property_id,
+        'lot_id' => $booking->lot_id,
+        'customer_id' => $booking->customer_id,
+        'document_type' => 'Surat Kerja',
+        'document_category' => 'other',
+        'original_name' => 'surat-kerja.pdf',
+        'status' => 'uploaded',
+        'uploaded_at' => now(),
+    ]);
+    $otherBooking = createSharedDocumentBooking('Customer Lain');
+    PemberkasanDocument::query()->create([
+        'booking_id' => $otherBooking->id,
+        'property_id' => $otherBooking->lot->block->property_id,
+        'lot_id' => $otherBooking->lot_id,
+        'customer_id' => $otherBooking->customer_id,
+        'document_type' => 'Berkas Lain',
+        'document_category' => 'other',
+        'original_name' => 'berkas-lain.pdf',
+        'status' => 'failed',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('pemberkasan.other-documents.index', [
+        'property_id' => $booking->lot->block->property_id,
+        'document_type' => 'Surat Kerja',
+        'status' => 'uploaded',
+        'search' => 'Customer Filter',
+    ]));
+
+    $response->assertOk()
+        ->assertSee('surat-kerja.pdf')
+        ->assertDontSee('berkas-lain.pdf')
+        ->assertViewHas('documents', fn ($documents): bool => $documents->total() === 1
+            && $documents->getCollection()->first()->is($document))
+        ->assertSee('name="property_id"', false)
+        ->assertSee('name="document_type"', false)
+        ->assertSee('name="status"', false);
+});
+
 test('pemberkasan can upload additional booking documents before BI checking approval', function () {
     Storage::fake('local');
 

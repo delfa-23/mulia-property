@@ -4,13 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ConstructionStage;
-use App\Models\Lot;
 use App\Models\Property;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
@@ -92,11 +90,10 @@ class PropertyController extends Controller
             ->with('block')
             ->orderBy('lot_number')
             ->get();
-        $mappedLotCount = $lots->whereNotNull('map_coordinates')->count();
+        $mappedLots = $lots->whereNotNull('map_coordinates');
+        $mappedLotCount = $mappedLots->count();
         $blocks = $property->blocks()->withCount('lots')->orderBy('name')->get();
-        $mappedLotCountsByBlock = $lots
-            ->whereNotNull('map_coordinates')
-            ->countBy('block_id');
+        $mappedLotCountsByBlock = $mappedLots->countBy('block_id');
         $hasLots = $lots->isNotEmpty()
             && $blocks->isNotEmpty()
             && $blocks->every(fn ($block) => $block->lots_count > 0);
@@ -134,24 +131,11 @@ class PropertyController extends Controller
         $sitePlan = $validated['site_plan'] ?? null;
         unset($validated['site_plan']);
 
-        $previousSitePlanPath = $property->site_plan_path;
-
         if ($sitePlan !== null) {
             $validated['site_plan_path'] = $this->storeSitePlan($sitePlan);
         }
 
         $property->update($validated);
-
-        if ($sitePlan !== null && $previousSitePlanPath !== null) {
-            Storage::disk('site-plans')->delete($previousSitePlanPath);
-            Storage::disk('public')->delete($previousSitePlanPath);
-        }
-
-        if ($sitePlan !== null) {
-            Lot::query()
-                ->whereHas('block', fn ($query) => $query->where('property_id', $property->id))
-                ->update(['map_coordinates' => null]);
-        }
 
         return redirect()
             ->route('admin.properties.index')
@@ -160,7 +144,7 @@ class PropertyController extends Controller
 
     private function storeSitePlan(UploadedFile $sitePlan): string
     {
-        $path = $sitePlan->store('site-plans', 'site-plans');
+        $path = $sitePlan->store('', 'site-plans');
 
         if ($path === false) {
             throw new RuntimeException('Denah perumahan gagal disimpan ke penyimpanan.');
@@ -189,22 +173,43 @@ class PropertyController extends Controller
             'description' => ['nullable', 'string'],
         ]);
 
-        $overlappingStageExists = $property->constructionStages()
-            ->where('min_progress', '<=', $validated['max_progress'])
-            ->where('max_progress', '>=', $validated['min_progress'])
-            ->exists();
-
-        if ($overlappingStageExists) {
-            return back()
-                ->withErrors([
-                    'min_progress' => 'Range persentase bertabrakan dengan tahapan pembangunan lain di perumahan ini.',
-                ])
-                ->withInput();
-        }
-
         $property->constructionStages()->create($validated);
 
         return back()->with('success', 'Tahapan pembangunan berhasil ditambahkan ke '.$property->name.'.');
+    }
+
+    public function updateConstructionStage(
+        Request $request,
+        Property $property,
+        ConstructionStage $constructionStage,
+    ): RedirectResponse {
+        abort_unless($constructionStage->property_id === $property->id, 404);
+
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('construction_stages', 'name')
+                    ->where('property_id', $property->id)
+                    ->ignore($constructionStage),
+            ],
+            'order' => [
+                'required',
+                'integer',
+                'min:1',
+                Rule::unique('construction_stages', 'order')
+                    ->where('property_id', $property->id)
+                    ->ignore($constructionStage),
+            ],
+            'min_progress' => ['required', 'numeric', 'min:0', 'max:100', 'lte:max_progress'],
+            'max_progress' => ['required', 'numeric', 'min:0', 'max:100', 'gte:min_progress'],
+            'description' => ['nullable', 'string'],
+        ]);
+
+        $constructionStage->update($validated);
+
+        return back()->with('success', 'Tahapan pembangunan berhasil diperbarui di '.$property->name.'.');
     }
 
     public function destroyConstructionStage(
