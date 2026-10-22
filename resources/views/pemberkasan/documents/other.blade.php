@@ -114,6 +114,8 @@
                             </p>
                             @if($document->status === 'uploaded')
                                 <p class="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">Tersimpan di Google Drive</p>
+                            @elseif($document->status === 'archived')
+                                <p class="mt-2 text-sm font-medium text-zinc-500">Diarsipkan. File telah dihapus dari Google Drive karena kavling dialihkan.</p>
                             @elseif($document->status === 'failed')
                                 <p class="mt-2 text-sm font-medium text-rose-700 dark:text-rose-300">Upload ke Google Drive gagal</p>
                                 @if($document->upload_error)

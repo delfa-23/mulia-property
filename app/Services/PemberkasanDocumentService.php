@@ -107,7 +107,13 @@ class PemberkasanDocumentService
             throw new \InvalidArgumentException('Kategori dokumen tidak sesuai dengan jenis berkas.');
         }
 
+        $this->archiveCancelledBookingDocumentsForLot($booking);
+
         $document = $this->resolveDocument($booking, $documentType, $documentCategory);
+
+        if ($document->exists && $document->status === 'archived') {
+            throw new RuntimeException('Dokumen ini sudah diarsipkan dan tidak dapat diubah.');
+        }
 
         if ($document->exists && in_array($document->status, ['pending', 'uploading'], true)) {
             throw new RuntimeException('Dokumen ini masih menunggu atau sedang diproses oleh Google Drive.');
@@ -136,6 +142,10 @@ class PemberkasanDocumentService
 
     public function retryUpload(PemberkasanDocument $document, ?User $user = null): PemberkasanDocument
     {
+        if ($document->status === 'archived') {
+            throw new RuntimeException('Dokumen ini sudah diarsipkan dan tidak dapat diunggah ulang.');
+        }
+
         $uploadPath = $document->replacement_local_path ?: $document->local_path;
 
         if (! $uploadPath || ! Storage::disk('local')->exists($uploadPath)) {
@@ -160,6 +170,10 @@ class PemberkasanDocumentService
         UploadedFile $uploadedFile,
         ?User $user = null,
     ): PemberkasanDocument {
+        if ($document->status === 'archived') {
+            throw new RuntimeException('Dokumen ini sudah diarsipkan dan tidak dapat diganti.');
+        }
+
         if (in_array($document->status, ['pending', 'uploading'], true)) {
             throw new RuntimeException('Dokumen sedang menunggu atau diproses. Tunggu sampai proses selesai sebelum mengganti file.');
         }
@@ -193,8 +207,11 @@ class PemberkasanDocumentService
             $this->uploadStoredDocument($document->id);
         } catch (\Throwable $exception) {
             $document->refresh();
-            $document->status = 'failed';
-            $document->save();
+
+            if ($document->status !== 'archived') {
+                $document->status = 'failed';
+                $document->save();
+            }
 
             throw new RuntimeException(
                 $document->upload_error ?: $exception->getMessage(),
@@ -208,6 +225,10 @@ class PemberkasanDocumentService
 
     public function deleteDocument(PemberkasanDocument $document): void
     {
+        if ($document->status === 'archived') {
+            throw new RuntimeException('Dokumen arsip dipertahankan sebagai riwayat dan tidak dapat dihapus dari aplikasi.');
+        }
+
         if (in_array($document->status, ['pending', 'uploading'], true)) {
             throw new RuntimeException('Dokumen sedang menunggu atau diproses. Tunggu sampai proses selesai sebelum menghapusnya.');
         }
@@ -225,11 +246,41 @@ class PemberkasanDocumentService
         $document->delete();
     }
 
+    public function deleteBookingDocuments(Booking $booking): void
+    {
+        $documents = PemberkasanDocument::query()
+            ->where('booking_id', $booking->id)
+            ->orderBy('id')
+            ->get();
+
+        if ($documents->contains(fn (PemberkasanDocument $document): bool => in_array($document->status, ['pending', 'uploading'], true))) {
+            throw new RuntimeException('Booking tidak dapat dihapus selama dokumennya masih menunggu atau sedang diunggah ke Google Drive.');
+        }
+
+        foreach ($documents as $document) {
+            if ($document->drive_file_id) {
+                $this->googleDriveService->deleteFileIfExists($document->drive_file_id);
+            }
+        }
+
+        foreach ($documents as $document) {
+            foreach ([$document->local_path, $document->replacement_local_path] as $localPath) {
+                if ($localPath && Storage::disk('local')->exists($localPath)) {
+                    Storage::disk('local')->delete($localPath);
+                }
+            }
+        }
+    }
+
     public function uploadStoredDocument(int $documentId): void
     {
         $document = PemberkasanDocument::query()
             ->with(['booking.customer', 'booking.lot.block.property'])
             ->findOrFail($documentId);
+
+        if ($document->status === 'archived') {
+            return;
+        }
 
         $uploadPath = $document->replacement_local_path ?: $document->local_path;
 
@@ -251,9 +302,10 @@ class PemberkasanDocumentService
             );
             $localFilePath = Storage::disk('local')->path($uploadPath);
             $driveResult = $document->drive_file_id
-                ? $this->googleDriveService->updateFile(
+                ? $this->googleDriveService->replaceFile(
                     $document->drive_file_id,
                     $localFilePath,
+                    $documentFolder['id'],
                     $driveFileName,
                     $document->mime_type,
                 )
@@ -264,11 +316,23 @@ class PemberkasanDocumentService
                     $document->mime_type,
                 );
         } catch (\Throwable $exception) {
-            $document->status = 'pending';
-            $document->upload_error = $this->googleDriveService->formatUploadError($exception);
-            $document->save();
+            $document->refresh();
+
+            if ($document->status !== 'archived') {
+                $document->status = 'pending';
+                $document->upload_error = $this->googleDriveService->formatUploadError($exception);
+                $document->save();
+            }
 
             throw $exception;
+        }
+
+        $document->refresh();
+
+        if ($document->status === 'archived') {
+            $this->googleDriveService->deleteFile($driveResult['id']);
+
+            return;
         }
 
         $previousLocalPath = $document->local_path;
@@ -357,6 +421,31 @@ class PemberkasanDocumentService
             ->where('document_category', $documentCategory)
             ->where('document_type', $documentType)
             ->firstOrNew();
+    }
+
+    private function archiveCancelledBookingDocumentsForLot(Booking $booking): void
+    {
+        if (! $booking->lot_id) {
+            return;
+        }
+
+        $documents = PemberkasanDocument::query()
+            ->where('booking_id', '!=', $booking->id)
+            ->where('status', '!=', 'archived')
+            ->whereHas('booking', fn ($query) => $query
+                ->where('lot_id', $booking->lot_id)
+                ->where('status', 'cancelled'))
+            ->orderBy('id')
+            ->get();
+
+        foreach ($documents as $document) {
+            if ($document->drive_file_id) {
+                $this->googleDriveService->deleteFile($document->drive_file_id);
+            }
+
+            $document->status = 'archived';
+            $document->save();
+        }
     }
 
     private function storeLocalFile(UploadedFile $uploadedFile): string

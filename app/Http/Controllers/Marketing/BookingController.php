@@ -150,6 +150,7 @@ class BookingController extends Controller
             'sales',
             'histories.changedBy',
             'payments.recordedBy',
+            'payments.paymentOrder',
             'paymentOrders',
             'documentProcess',
             'pemberkasanDocuments.uploadedBy',
@@ -454,14 +455,24 @@ class BookingController extends Controller
         return redirect()->route('marketing.bookings.show', $booking)->with('success', 'Pembayaran berhasil dicatat.');
     }
 
-    public function destroy(Request $request, Booking $booking, ActivityLogger $activityLogger): RedirectResponse
-    {
+    public function destroy(
+        Request $request,
+        Booking $booking,
+        ActivityLogger $activityLogger,
+        PemberkasanDocumentService $documentService,
+    ): RedirectResponse {
         abort_unless($booking->status === 'cancelled', 422, 'Booking harus berstatus cancelled sebelum dihapus.');
         abort_if(
             $booking->paymentOrders()->where('status', 'pending')->exists(),
             422,
             'Booking tidak dapat dihapus selama transaksi Midtrans masih menunggu pembayaran.',
         );
+
+        try {
+            $documentService->deleteBookingDocuments($booking);
+        } catch (\Throwable $exception) {
+            return back()->withErrors(['booking' => $exception->getMessage()]);
+        }
 
         DB::transaction(function () use ($request, $booking, $activityLogger): void {
             $lot = Lot::query()->lockForUpdate()->find($booking->lot_id);

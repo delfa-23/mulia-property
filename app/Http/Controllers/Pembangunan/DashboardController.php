@@ -187,11 +187,14 @@ class DashboardController extends Controller
             ->where('purpose', 'pembangunan')
             ->tap($filterFinancialRecords)
             ->sum('amount');
+        $totalFacilityBudget = CommonFacility::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->sum('budget');
         $totalExpense = ExpenseTransaction::query()
             ->where('division', 'pembangunan')
             ->tap($filterFinancialRecords)
             ->sum('amount');
-        $totalConstructionDeviation = (float) $totalBudget - (float) $totalExpense;
+        $totalBudgetDeviation = (float) $totalBudget + (float) $totalFacilityBudget - (float) $totalExpense;
         $stageProgress = ConstructionProgress::query()
             ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
             ->select('stage_id')
@@ -264,8 +267,9 @@ class DashboardController extends Controller
                 'lotStatusChart',
                 'lotStatusTotal',
                 'totalBudget',
+                'totalFacilityBudget',
                 'totalExpense',
-                'totalConstructionDeviation',
+                'totalBudgetDeviation',
                 'stageProgress',
                 'facilityProgressChart',
             )

@@ -71,11 +71,15 @@
                                             'failed' => 'Gagal',
                                             'uploading' => 'Sedang upload',
                                             'pending' => 'Menunggu',
+                                            'archived' => 'Diarsipkan',
                                             default => ucfirst($document->status),
                                         } }}
                                     </span>
-                                    @if($document->upload_error)
+                                    @if($document->upload_error && $document->status === 'failed')
                                         <p class="mt-2 max-w-xs text-xs text-red-600">{{ $document->upload_error }}</p>
+                                    @endif
+                                    @if($document->status === 'archived')
+                                        <p class="mt-2 max-w-xs text-xs text-zinc-500">File Drive dihapus karena kavling dialihkan. Riwayat dokumen tetap tersimpan di aplikasi.</p>
                                     @endif
                                 </td>
                                 <td class="wrap-break-word px-4 py-4">
@@ -89,13 +93,14 @@
                                         @if($document->drive_folder_id && $document->status === 'uploaded')
                                             <a href="https://drive.google.com/drive/folders/{{ $document->drive_folder_id }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100">Buka Folder di Drive</a>
                                         @endif
-                                        @if($document->status === 'failed')
+                                        @if($document->status === 'archived')
+                                            <p class="max-w-56 text-xs text-zinc-500">Dokumen arsip tidak dapat diubah.</p>
+                                        @elseif($document->status === 'failed')
                                             <form method="POST" action="{{ route('admin.google-drive.documents.retry', $document) }}">
                                                 @csrf
                                                 <button class="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white">Upload Ulang</button>
                                             </form>
-                                        @endif
-                                        @if(in_array($document->status, ['pending', 'uploading'], true))
+                                        @elseif(in_array($document->status, ['pending', 'uploading'], true))
                                             <p class="max-w-56 text-xs text-amber-700">
                                                 Penggantian dan penghapusan tersedia setelah proses upload selesai.
                                             </p>

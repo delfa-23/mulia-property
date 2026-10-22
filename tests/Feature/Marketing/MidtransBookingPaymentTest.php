@@ -38,7 +38,8 @@ it('creates a Midtrans Snap checkout for the next booking payment stage', functi
     $response->assertRedirect('https://app.sandbox.midtrans.com/snap/v2/vtweb/snap-token');
     Http::assertSent(fn (ClientRequest $request): bool => $request->url() === 'https://app.sandbox.midtrans.com/snap/v1/transactions'
         && $request['transaction_details']['gross_amount'] === 2500000
-        && $request['customer_details']['first_name'] === 'Pembeli Midtrans');
+        && $request['customer_details']['first_name'] === 'Pembeli Midtrans'
+        && $request['callbacks']['finish'] === route('marketing.bookings.payments.midtrans.return', $booking));
     $this->assertDatabaseHas('booking_payment_orders', [
         'booking_id' => $booking->id,
         'stage' => 'dp',
@@ -86,6 +87,99 @@ it('records a verified Midtrans settlement once in booking payments and finance'
         'status' => 'confirmed',
         'amount' => '2500000.00',
         'booking_payment_id' => BookingPayment::query()->sole()->id,
+    ]);
+});
+
+it('reconciles a settled Midtrans order when staff checks its status', function () {
+    config([
+        'services.midtrans.server_key' => 'SB-Mid-server-test',
+        'services.midtrans.is_production' => false,
+    ]);
+    $user = makeMidtransPaymentTestUser();
+    $booking = makeMidtransPaymentTestBooking();
+    $order = BookingPaymentOrder::query()->create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 2500000,
+        'order_id' => 'BK'.$booking->id.'-STATUSCHECK',
+        'status' => 'pending',
+        'created_by' => $user->id,
+    ]);
+    Http::preventStrayRequests();
+    Http::fake([
+        'api.sandbox.midtrans.com/v2/*/status' => Http::response([
+            'order_id' => $order->order_id,
+            'status_code' => '200',
+            'gross_amount' => '2500000.00',
+            'transaction_status' => 'settlement',
+            'payment_type' => 'bank_transfer',
+            'transaction_id' => 'midtrans-status-transaction',
+        ]),
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('marketing.bookings.payments.midtrans.refresh', $booking))
+        ->assertRedirect(route('marketing.bookings.show', $booking))
+        ->assertSessionHas('success', 'Pembayaran Midtrans sudah terkonfirmasi dan tercatat di riwayat pembayaran.');
+
+    expect($order->fresh()->status)->toBe('paid')
+        ->and($order->fresh()->transaction_id)->toBe('midtrans-status-transaction');
+    $this->assertDatabaseHas('booking_payments', [
+        'booking_id' => $booking->id,
+        'booking_payment_order_id' => $order->id,
+        'amount' => '2500000.00',
+        'payment_method' => 'Midtrans - bank_transfer',
+    ]);
+    $this->assertDatabaseHas('finance_cash_flows', [
+        'direction' => 'income',
+        'status' => 'confirmed',
+        'amount' => '2500000.00',
+    ]);
+});
+
+it('reconciles a settled Midtrans order when staff returns from checkout', function () {
+    config([
+        'services.midtrans.server_key' => 'SB-Mid-server-test',
+        'services.midtrans.is_production' => false,
+    ]);
+    $user = makeMidtransPaymentTestUser();
+    $booking = makeMidtransPaymentTestBooking();
+    $order = BookingPaymentOrder::query()->create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 2500000,
+        'order_id' => 'BK'.$booking->id.'-CHECKOUTRETURN',
+        'status' => 'pending',
+        'created_by' => $user->id,
+    ]);
+    Http::preventStrayRequests();
+    Http::fake([
+        'api.sandbox.midtrans.com/v2/*/status' => Http::response([
+            'order_id' => $order->order_id,
+            'status_code' => '200',
+            'gross_amount' => '2500000.00',
+            'transaction_status' => 'settlement',
+            'payment_type' => 'bank_transfer',
+            'transaction_id' => 'midtrans-return-transaction',
+        ]),
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('marketing.bookings.payments.midtrans.return', $booking))
+        ->assertRedirect(route('marketing.bookings.show', $booking))
+        ->assertSessionHas('success', 'Pembayaran Midtrans sudah terkonfirmasi dan tercatat di riwayat pembayaran.');
+
+    expect($order->fresh()->status)->toBe('paid')
+        ->and($order->fresh()->transaction_id)->toBe('midtrans-return-transaction');
+    $this->assertDatabaseHas('booking_payments', [
+        'booking_id' => $booking->id,
+        'booking_payment_order_id' => $order->id,
+        'amount' => '2500000.00',
+    ]);
+    $this->assertDatabaseHas('finance_cash_flows', [
+        'direction' => 'income',
+        'status' => 'confirmed',
+        'amount' => '2500000.00',
     ]);
 });
 

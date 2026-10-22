@@ -25,6 +25,179 @@ test('google drive quota errors are translated into a actionable message', funct
         ->toContain('quota');
 });
 
+test('a new booking archives cancelled documents for the same lot and deletes their Drive files', function () {
+    Storage::fake('local');
+
+    $property = Property::create(['name' => 'Griya Asri']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 500000000,
+        'status' => 'booked',
+    ]);
+    $oldCustomer = Customer::create(['name' => 'Customer A']);
+    $newCustomer = Customer::create(['name' => 'Customer B']);
+    $activeCustomer = Customer::create(['name' => 'Customer Aktif']);
+    $cancelledBooking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $oldCustomer->id,
+        'booking_date' => '2026-09-30',
+        'status' => 'cancelled',
+    ]);
+    $newBooking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $newCustomer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+    $activeBooking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $activeCustomer->id,
+        'booking_date' => '2026-10-02',
+        'status' => 'booking',
+    ]);
+    $cancelledDocument = PemberkasanDocument::create([
+        'booking_id' => $cancelledBooking->id,
+        'property_id' => $property->id,
+        'lot_id' => null,
+        'customer_id' => $oldCustomer->id,
+        'document_type' => 'KTP',
+        'original_name' => 'ktp-a.pdf',
+        'mime_type' => 'application/pdf',
+        'file_size' => 120,
+        'local_path' => 'pemberkasan/documents/ktp-a.pdf',
+        'drive_file_id' => 'cancelled-drive-file',
+        'drive_folder_id' => 'cancelled-drive-folder',
+        'drive_url' => 'https://drive.google.com/file/d/cancelled-drive-file/view',
+        'status' => 'uploaded',
+    ]);
+    $activeDocument = PemberkasanDocument::create([
+        'booking_id' => $activeBooking->id,
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_id' => $activeCustomer->id,
+        'document_type' => 'KTP',
+        'original_name' => 'ktp-active.pdf',
+        'mime_type' => 'application/pdf',
+        'file_size' => 120,
+        'local_path' => 'pemberkasan/documents/ktp-active.pdf',
+        'drive_file_id' => 'active-drive-file',
+        'status' => 'uploaded',
+    ]);
+    Storage::disk('local')->put('pemberkasan/documents/ktp-a.pdf', 'customer A file');
+    Storage::disk('local')->put('pemberkasan/documents/ktp-active.pdf', 'active customer file');
+
+    $googleDriveService = Mockery::mock(GoogleDriveService::class);
+    $googleDriveService->shouldReceive('deleteFile')
+        ->once()
+        ->with('cancelled-drive-file')
+        ->andReturn(true);
+    $googleDriveService->shouldReceive('configuredRootFolderId')
+        ->once()
+        ->andReturn('root-folder');
+    foreach ([
+        ['Griya Asri', 'root-folder', 'property-folder'],
+        ['A', 'property-folder', 'block-folder'],
+        ['A-01', 'block-folder', 'lot-folder'],
+        ['Customer B', 'lot-folder', 'customer-folder'],
+        ['KTP', 'customer-folder', 'document-folder'],
+    ] as [$name, $parentId, $folderId]) {
+        $googleDriveService->shouldReceive('findOrCreateFolder')
+            ->once()
+            ->with($name, $parentId)
+            ->andReturn([
+                'id' => $folderId,
+                'name' => $name,
+                'mimeType' => 'application/vnd.google-apps.folder',
+                'url' => 'https://drive.google.com/drive/folders/'.$folderId,
+            ]);
+    }
+    $googleDriveService->shouldReceive('uploadFile')
+        ->once()
+        ->andReturn([
+            'id' => 'customer-b-drive-file',
+            'name' => 'KTP_Customer B.pdf',
+            'mimeType' => 'application/pdf',
+            'url' => 'https://drive.google.com/file/d/customer-b-drive-file/view',
+        ]);
+    $this->app->instance(GoogleDriveService::class, $googleDriveService);
+
+    $newDocument = $this->app->make(PemberkasanDocumentService::class)->uploadForBooking(
+        $newBooking,
+        UploadedFile::fake()->create('ktp-b.pdf', 120, 'application/pdf'),
+        'KTP',
+    );
+
+    expect($newDocument->status)->toBe('uploaded')
+        ->and($cancelledDocument->fresh()->status)->toBe('archived')
+        ->and($cancelledDocument->fresh()->drive_file_id)->toBe('cancelled-drive-file')
+        ->and($activeDocument->fresh()->status)->toBe('uploaded');
+    $this->assertModelExists($cancelledDocument);
+    Storage::disk('local')->assertExists('pemberkasan/documents/ktp-a.pdf');
+    Storage::disk('local')->assertExists('pemberkasan/documents/ktp-active.pdf');
+});
+
+test('a new booking upload stops if deleting the cancelled customer file from Drive fails', function () {
+    Storage::fake('local');
+
+    $property = Property::create(['name' => 'Griya Asri']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 500000000,
+        'status' => 'booked',
+    ]);
+    $oldCustomer = Customer::create(['name' => 'Customer A']);
+    $newCustomer = Customer::create(['name' => 'Customer B']);
+    $cancelledBooking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $oldCustomer->id,
+        'booking_date' => '2026-09-30',
+        'status' => 'cancelled',
+    ]);
+    $newBooking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $newCustomer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+    $cancelledDocument = PemberkasanDocument::create([
+        'booking_id' => $cancelledBooking->id,
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_id' => $oldCustomer->id,
+        'document_type' => 'KTP',
+        'original_name' => 'ktp-a.pdf',
+        'mime_type' => 'application/pdf',
+        'file_size' => 120,
+        'local_path' => 'pemberkasan/documents/ktp-a.pdf',
+        'drive_file_id' => 'cancelled-drive-file',
+        'status' => 'uploaded',
+    ]);
+    Storage::disk('local')->put('pemberkasan/documents/ktp-a.pdf', 'customer A file');
+
+    $googleDriveService = Mockery::mock(GoogleDriveService::class);
+    $googleDriveService->shouldReceive('deleteFile')
+        ->once()
+        ->with('cancelled-drive-file')
+        ->andThrow(new RuntimeException('Google Drive deletion failed.'));
+    $googleDriveService->shouldNotReceive('uploadFile');
+    $this->app->instance(GoogleDriveService::class, $googleDriveService);
+
+    expect(fn () => $this->app->make(PemberkasanDocumentService::class)->uploadForBooking(
+        $newBooking,
+        UploadedFile::fake()->create('ktp-b.pdf', 120, 'application/pdf'),
+        'KTP',
+    ))->toThrow(RuntimeException::class, 'Google Drive deletion failed.');
+
+    expect($cancelledDocument->fresh()->status)->toBe('uploaded')
+        ->and(PemberkasanDocument::query()->where('booking_id', $newBooking->id)->exists())->toBeFalse();
+    Storage::disk('local')->assertExists('pemberkasan/documents/ktp-a.pdf');
+    expect(Storage::disk('local')->allFiles('pemberkasan/documents'))->toHaveCount(1);
+});
+
 beforeEach(function () {
     Storage::fake('local');
 });
@@ -91,9 +264,10 @@ test('pemberkasan staff can upload a customer document to google drive and save 
             'mimeType' => 'application/pdf',
             'url' => 'https://drive.google.com/file/d/file-123/view',
         ]);
-    $googleDriveService->shouldReceive('updateFile')
+    $googleDriveService->shouldReceive('replaceFile')
         ->once()
-        ->withArgs(fn (string $fileId, string $path, string $name, string $mimeType): bool => $fileId === 'file-123'
+        ->withArgs(fn (string $fileId, string $path, string $folderId, string $name, string $mimeType): bool => $fileId === 'file-123'
+            && $folderId === 'document-folder'
             && $name === 'KTP_Budi Santoso.pdf'
             && $mimeType === 'application/pdf'
             && is_file($path))
@@ -265,9 +439,10 @@ test('pemberkasan staff can replace an existing customer document in google driv
                 'url' => 'https://drive.google.com/folderview?id='.$folderId,
             ]);
     }
-    $googleDriveService->shouldReceive('updateFile')
+    $googleDriveService->shouldReceive('replaceFile')
         ->once()
-        ->withArgs(fn (string $fileId, string $path, string $name, string $mimeType): bool => $fileId === 'drive-file-123'
+        ->withArgs(fn (string $fileId, string $path, string $folderId, string $name, string $mimeType): bool => $fileId === 'drive-file-123'
+            && $folderId === 'document-folder'
             && is_file($path)
             && $name === 'KTP_Budi Santoso.pdf'
             && $mimeType === 'application/pdf')
@@ -416,21 +591,22 @@ test('admin can replace an uploaded document and delete it from Google Drive', f
             ->with($name, $parentId)
             ->andReturn(['id' => 'document-folder']);
     }
-    $googleDriveService->shouldReceive('updateFile')
+    $googleDriveService->shouldReceive('replaceFile')
         ->once()
-        ->withArgs(fn (string $fileId, string $path, string $name, string $mimeType): bool => $fileId === 'drive-file-123'
+        ->withArgs(fn (string $fileId, string $path, string $folderId, string $name, string $mimeType): bool => $fileId === 'drive-file-123'
+            && $folderId === 'document-folder'
             && is_file($path)
             && $name === 'KTP_Budi Santoso.pdf'
             && $mimeType === 'application/pdf')
         ->andReturn([
-            'id' => 'drive-file-123',
+            'id' => 'new-drive-file-456',
             'name' => 'KTP_Budi Santoso.pdf',
             'mimeType' => 'application/pdf',
-            'url' => 'https://drive.google.com/file/d/drive-file-123/view',
+            'url' => 'https://drive.google.com/file/d/new-drive-file-456/view',
         ]);
     $googleDriveService->shouldReceive('deleteFile')
         ->once()
-        ->with('drive-file-123')
+        ->with('new-drive-file-456')
         ->andReturnTrue();
     $this->app->instance(GoogleDriveService::class, $googleDriveService);
     $this->app->instance(GoogleDriveService::class, $googleDriveService);
@@ -446,6 +622,7 @@ test('admin can replace an uploaded document and delete it from Google Drive', f
     $replacementPath = $document->local_path;
 
     expect($document->status)->toBe('uploaded')
+        ->and($document->drive_file_id)->toBe('new-drive-file-456')
         ->and($document->original_name)->toBe('replacement.pdf')
         ->and($document->replacement_local_path)->toBeNull()
         ->and(Storage::disk('local')->exists($originalPath))->toBeFalse();
@@ -453,7 +630,7 @@ test('admin can replace an uploaded document and delete it from Google Drive', f
     $this->assertDatabaseHas('pemberkasan_documents', [
         'id' => $document->id,
         'status' => 'uploaded',
-        'drive_file_id' => 'drive-file-123',
+        'drive_file_id' => 'new-drive-file-456',
         'replacement_local_path' => null,
     ]);
     expect(Storage::disk('local')->exists($originalPath))->toBeFalse()
@@ -499,7 +676,7 @@ test('admin cannot replace or delete a document while its upload is pending', fu
     Storage::disk('local')->put('pemberkasan/documents/ktp.pdf', 'pending file');
     $googleDriveService = Mockery::mock(GoogleDriveService::class);
     $googleDriveService->shouldNotReceive('deleteFile');
-    $googleDriveService->shouldNotReceive('updateFile');
+    $googleDriveService->shouldNotReceive('replaceFile');
     $this->app->instance(GoogleDriveService::class, $googleDriveService);
 
     $replacementResponse = $this->actingAs($admin)

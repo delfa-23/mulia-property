@@ -4,6 +4,7 @@ use App\Models\BankProcess;
 use App\Models\Block;
 use App\Models\Booking;
 use App\Models\Budget;
+use App\Models\CommonFacility;
 use App\Models\ConstructionProgress;
 use App\Models\ConstructionStage;
 use App\Models\Customer;
@@ -487,7 +488,83 @@ test('construction dashboard summarizes filtered finances and booking handover p
             && $chart->firstWhere('status', 'blocked') === null)
         ->assertViewHas('totalBudget', fn (int|float|string $total): bool => (float) $total === 1250.0)
         ->assertViewHas('totalExpense', fn (int|float|string $total): bool => (float) $total === 350.0)
-        ->assertViewHas('totalConstructionDeviation', fn (int|float|string $total): bool => (float) $total === 900.0);
+        ->assertViewHas('totalBudgetDeviation', fn (int|float|string $total): bool => (float) $total === 900.0);
+});
+
+test('construction dashboard totals RAB and facility budgets for the selected property', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Anggaran']);
+    $otherProperty = Property::create(['name' => 'Perumahan Lain']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+
+    foreach (range(1, 32) as $number) {
+        $lot = Lot::create([
+            'block_id' => $block->id,
+            'lot_number' => sprintf('D-%02d', $number),
+            'house_price' => 500000000,
+            'status' => 'available',
+        ]);
+        Budget::create([
+            'property_id' => $property->id,
+            'lot_id' => $lot->id,
+            'name' => 'RAB Deret',
+            'category' => 'Bangunan Rumah',
+            'purpose' => 'pembangunan',
+            'amount' => 78000000,
+        ]);
+    }
+
+    foreach (range(1, 98) as $number) {
+        $lot = Lot::create([
+            'block_id' => $block->id,
+            'lot_number' => sprintf('C-%03d', $number),
+            'house_price' => 500000000,
+            'status' => 'available',
+        ]);
+        Budget::create([
+            'property_id' => $property->id,
+            'lot_id' => $lot->id,
+            'name' => 'RAB Couple',
+            'category' => 'Bangunan Rumah',
+            'purpose' => 'pembangunan',
+            'amount' => 75000000,
+        ]);
+    }
+
+    CommonFacility::create([
+        'property_id' => $property->id,
+        'name' => 'Jalan Komplek',
+        'budget' => 200000000,
+    ]);
+    CommonFacility::create([
+        'property_id' => $otherProperty->id,
+        'name' => 'Jalan Komplek Perumahan Lain',
+        'budget' => 900000000,
+    ]);
+    Budget::create([
+        'property_id' => $property->id,
+        'name' => 'RAB Marketing',
+        'category' => 'Marketing',
+        'purpose' => 'marketing',
+        'amount' => 1000000000,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->get(route('pembangunan.dashboard', ['property_id' => $property->id]));
+
+    $response->assertSee('Rp 9.846.000.000')
+        ->assertSee('Anggaran Fasum')
+        ->assertSee('Rp 200.000.000')
+        ->assertViewHas('totalBudget', fn (int|float|string $total): bool => (float) $total === 9846000000.0)
+        ->assertViewHas('totalFacilityBudget', fn (int|float|string $total): bool => (float) $total === 200000000.0)
+        ->assertViewHas('totalBudgetDeviation', fn (int|float|string $total): bool => (float) $total === 10046000000.0);
 });
 
 test('pembangunan staff no longer see the construction finance menu link', function () {

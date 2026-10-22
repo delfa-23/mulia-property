@@ -21,7 +21,7 @@ class AdditionalDocumentController extends Controller
         $validated = $request->validate([
             'property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'document_type' => ['nullable', 'string', 'max:100'],
-            'status' => ['nullable', Rule::in(['pending', 'uploading', 'uploaded', 'failed'])],
+            'status' => ['nullable', Rule::in(['pending', 'uploading', 'uploaded', 'failed', 'archived'])],
             'search' => ['nullable', 'string', 'max:100'],
         ]);
 

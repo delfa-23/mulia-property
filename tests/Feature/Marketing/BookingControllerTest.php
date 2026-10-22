@@ -6,9 +6,156 @@ use App\Models\BookingPayment;
 use App\Models\Customer;
 use App\Models\Division;
 use App\Models\Lot;
+use App\Models\PemberkasanDocument;
 use App\Models\Property;
 use App\Models\User;
+use App\Services\GoogleDriveService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
+
+it('deletes only the selected booking customer files from Google Drive when the cancelled booking is deleted', function () {
+    Storage::fake('local');
+
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Hapus Booking']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Dihapus']);
+    $otherCustomer = Customer::create(['name' => 'Customer Lain']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'cancelled',
+    ]);
+    $otherBooking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $otherCustomer->id,
+        'booking_date' => '2026-10-02',
+        'status' => 'cancelled',
+    ]);
+    $document = PemberkasanDocument::create([
+        'booking_id' => $booking->id,
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'document_type' => 'KTP Pemohon',
+        'original_name' => 'ktp-dihapus.pdf',
+        'mime_type' => 'application/pdf',
+        'file_size' => 120,
+        'local_path' => 'pemberkasan/documents/ktp-dihapus.pdf',
+        'drive_file_id' => 'booking-drive-file',
+        'status' => 'uploaded',
+    ]);
+    $otherDocument = PemberkasanDocument::create([
+        'booking_id' => $otherBooking->id,
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_id' => $otherCustomer->id,
+        'document_type' => 'KTP Pemohon',
+        'original_name' => 'ktp-lain.pdf',
+        'mime_type' => 'application/pdf',
+        'file_size' => 120,
+        'local_path' => 'pemberkasan/documents/ktp-lain.pdf',
+        'drive_file_id' => 'other-booking-drive-file',
+        'status' => 'uploaded',
+    ]);
+    Storage::disk('local')->put('pemberkasan/documents/ktp-dihapus.pdf', 'selected booking document');
+    Storage::disk('local')->put('pemberkasan/documents/ktp-lain.pdf', 'other booking document');
+
+    $googleDriveService = Mockery::mock(GoogleDriveService::class);
+    $googleDriveService->shouldReceive('deleteFileIfExists')
+        ->once()
+        ->with('booking-drive-file')
+        ->andReturnTrue();
+    $googleDriveService->shouldNotReceive('deleteFileIfExists')
+        ->with('other-booking-drive-file');
+    $this->app->instance(GoogleDriveService::class, $googleDriveService);
+
+    $this->actingAs($user)
+        ->from(route('marketing.bookings.index'))
+        ->delete(route('marketing.bookings.destroy', $booking))
+        ->assertRedirect(route('marketing.bookings.index'))
+        ->assertSessionHas('success', 'Booking cancelled berhasil dihapus.');
+
+    $this->assertDatabaseMissing('bookings', ['id' => $booking->id]);
+    $this->assertDatabaseMissing('pemberkasan_documents', ['id' => $document->id]);
+    $this->assertModelExists($otherBooking);
+    $this->assertModelExists($otherDocument);
+    $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'available']);
+    Storage::disk('local')->assertMissing('pemberkasan/documents/ktp-dihapus.pdf');
+    Storage::disk('local')->assertExists('pemberkasan/documents/ktp-lain.pdf');
+});
+
+it('keeps a cancelled booking when deleting its Google Drive documents fails', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Gagal Hapus']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Gagal Hapus']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'cancelled',
+    ]);
+    $document = PemberkasanDocument::create([
+        'booking_id' => $booking->id,
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'document_type' => 'KTP Pemohon',
+        'original_name' => 'ktp.pdf',
+        'mime_type' => 'application/pdf',
+        'file_size' => 120,
+        'local_path' => 'pemberkasan/documents/ktp.pdf',
+        'drive_file_id' => 'booking-drive-file',
+        'status' => 'uploaded',
+    ]);
+
+    $googleDriveService = Mockery::mock(GoogleDriveService::class);
+    $googleDriveService->shouldReceive('deleteFileIfExists')
+        ->once()
+        ->with('booking-drive-file')
+        ->andThrow(new RuntimeException('Google Drive deletion failed.'));
+    $this->app->instance(GoogleDriveService::class, $googleDriveService);
+
+    $this->actingAs($user)
+        ->from(route('marketing.bookings.index'))
+        ->delete(route('marketing.bookings.destroy', $booking))
+        ->assertRedirect(route('marketing.bookings.index'))
+        ->assertSessionHasErrors(['booking' => 'Google Drive deletion failed.']);
+
+    $this->assertModelExists($booking);
+    $this->assertModelExists($document);
+    $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'booked']);
+});
 
 it('filters marketing bookings by selected customer', function () {
     $division = Division::create([

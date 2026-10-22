@@ -1,16 +1,16 @@
 <x-layouts::app :title="'Dashboard Pembangunan'">
     <div class="space-y-6">
-        <header class="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-slate-950 px-6 py-5 text-white shadow-sm">
+        <header class="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-slate-950 px-6 py-5 text-white shadow-sm" style="background-color: #020617; color: #ffffff;">
             <div>
-                <p class="text-xs font-bold uppercase tracking-[0.18em] text-orange-300">Ringkasan Operasional</p>
-                <h1 class="mt-1 text-2xl font-bold !text-white">Dashboard Pembangunan</h1>
-                <p class="mt-1 text-sm text-slate-300">Pantau anggaran, progress, dan status serah terima perumahan.</p>
+                <p class="text-xs font-bold uppercase tracking-[0.18em] text-orange-300" style="color: #fdba74;">Ringkasan Operasional</p>
+                <h1 class="mt-1 text-2xl font-bold !text-white" style="color: #ffffff;">Dashboard Pembangunan</h1>
+                <p class="mt-1 text-sm text-slate-300" style="color: #cbd5e1;">Pantau anggaran, progress, dan status serah terima perumahan.</p>
             </div>
             <nav class="flex flex-wrap gap-2">
-                <a href="{{ auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.progress.index') }}" wire:navigate class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200">
+                <a href="{{ auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.progress.index') }}" wire:navigate class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200" style="background-color: #ffffff; color: #0f172a;">
                     Tahapan Pembangunan
                 </a>
-                <a href="{{ auth()->user()->role === 'admin' ? route('admin.common-facilities.index') : route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
+                <a href="{{ auth()->user()->role === 'admin' ? route('admin.common-facilities.index') : route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800" style="border-color: #64748b; color: #ffffff;">
                     Fasilitas Umum
                 </a>
             </nav>
@@ -43,27 +43,31 @@
             </div>
         </form>
 
-        <section aria-labelledby="construction-finance-heading" class="overflow-hidden rounded-2xl bg-slate-900 text-white shadow-sm">
+        <section aria-labelledby="construction-finance-heading" class="overflow-hidden rounded-2xl bg-slate-900 text-white shadow-sm" style="background-color: #0f172a; color: #ffffff;">
             <div class="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
                 <div>
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-orange-300">Keuangan Pembangunan</p>
-                    <h2 id="construction-finance-heading" class="mt-1 text-lg font-bold !text-white">Ringkasan Anggaran</h2>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-orange-300" style="color: #fdba74;">Keuangan Pembangunan</p>
+                    <h2 id="construction-finance-heading" class="mt-1 text-lg font-bold !text-white" style="color: #ffffff;">Ringkasan Anggaran</h2>
                 </div>
-                <span class="text-sm text-slate-300">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
+                <span class="text-sm text-slate-300" style="color: #cbd5e1;">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
             </div>
-            <div class="grid divide-y divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <div class="grid divide-y divide-white/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
                 <div class="px-5 py-5 sm:px-6">
-                    <p class="text-sm font-medium text-slate-300">RAB Pembangunan</p>
+                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">RAB Pembangunan</p>
                     <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalBudget, 0, ',', '.') }}</p>
                 </div>
                 <div class="px-5 py-5 sm:px-6">
-                    <p class="text-sm font-medium text-slate-300">Total Pengeluaran</p>
+                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">Anggaran Fasum</p>
+                    <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalFacilityBudget, 0, ',', '.') }}</p>
+                </div>
+                <div class="px-5 py-5 sm:px-6">
+                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">Total Pengeluaran</p>
                     <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalExpense, 0, ',', '.') }}</p>
                 </div>
                 <div class="px-5 py-5 sm:px-6">
-                    <p class="text-sm font-medium text-slate-300">Deviasi Anggaran <span class="font-normal text-slate-400">(RAB - pengeluaran)</span></p>
-                    <p class="mt-2 text-2xl font-bold tracking-tight {{ $totalConstructionDeviation >= 0 ? 'text-emerald-300' : 'text-red-300' }}">
-                        Rp {{ number_format((float) $totalConstructionDeviation, 0, ',', '.') }}
+                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">Deviasi Anggaran <span class="font-normal text-slate-400" style="color: #94a3b8;">(RAB + fasum - pengeluaran)</span></p>
+                    <p class="mt-2 text-2xl font-bold tracking-tight {{ $totalBudgetDeviation >= 0 ? 'text-emerald-300' : 'text-red-300' }}" style="color: {{ $totalBudgetDeviation >= 0 ? '#6ee7b7' : '#fca5a5' }};">
+                        Rp {{ number_format((float) $totalBudgetDeviation, 0, ',', '.') }}
                     </p>
                 </div>
             </div>

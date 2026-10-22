@@ -116,6 +116,8 @@
                                                     <a href="{{ $driveDocument->drive_url }}" target="_blank" rel="noopener noreferrer" class="text-xs font-medium text-blue-600 hover:underline">Lihat dokumen</a>
                                                 @endif
                                             </div>
+                                        @elseif($driveDocument?->status === 'archived')
+                                            <p class="mt-2 text-xs font-medium text-zinc-500">Diarsipkan. File telah dihapus dari Google Drive karena kavling dialihkan.</p>
                                         @elseif($driveDocument?->status === 'failed')
                                             <p class="mt-2 text-xs font-medium text-red-700">Upload gagal. Pilih file lagi untuk mencoba kembali.</p>
                                         @elseif($driveDocument)

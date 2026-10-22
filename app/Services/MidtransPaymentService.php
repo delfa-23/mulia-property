@@ -115,7 +115,7 @@ class MidtransPaymentService
                 'phone' => $customer->phone,
             ], fn (?string $value): bool => $value !== null && $value !== ''),
             'callbacks' => [
-                'finish' => route('marketing.bookings.show', $order->booking_id),
+                'finish' => route('marketing.bookings.payments.midtrans.return', $order->booking_id),
             ],
             'credit_card' => ['secure' => true],
         ];
@@ -220,6 +220,99 @@ class MidtransPaymentService
             abort(422, 'Midtrans notification amount does not match the payment order.');
         }
 
+        $this->applyTransactionStatus($notification, $paymentOrder);
+    }
+
+    public function refreshPendingPaymentOrder(Booking $booking): string
+    {
+        $paymentOrder = BookingPaymentOrder::query()
+            ->where('booking_id', $booking->id)
+            ->where('status', 'pending')
+            ->latest()
+            ->first();
+
+        if (! $paymentOrder) {
+            return 'none';
+        }
+
+        $serverKey = config('services.midtrans.server_key');
+
+        if (! is_string($serverKey) || $serverKey === '') {
+            throw new MidtransGatewayException('Midtrans belum dikonfigurasi. Minta tim teknis mengatur MIDTRANS_SERVER_KEY.');
+        }
+
+        $isProduction = (bool) config('services.midtrans.is_production');
+        $baseUrl = $isProduction
+            ? 'https://api.midtrans.com'
+            : 'https://api.sandbox.midtrans.com';
+
+        try {
+            $response = Http::acceptJson()
+                ->connectTimeout(5)
+                ->timeout(10)
+                ->withBasicAuth($serverKey, '')
+                ->get($baseUrl.'/v2/'.rawurlencode($paymentOrder->order_id).'/status');
+        } catch (ConnectionException $exception) {
+            Log::warning('Midtrans payment status could not be checked.', [
+                'order_id' => $paymentOrder->order_id,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            throw new MidtransGatewayException(
+                'Status pembayaran belum dapat diperiksa. Pastikan koneksi ke Midtrans tersedia, lalu coba lagi.',
+                previous: $exception,
+            );
+        }
+
+        $notification = $response->json();
+
+        if (
+            ! $response->successful()
+            || ! is_array($notification)
+            || ($notification['order_id'] ?? null) !== $paymentOrder->order_id
+            || ($notification['status_code'] ?? null) !== '200'
+            || ! is_string($notification['gross_amount'] ?? null)
+            || ! is_string($notification['transaction_status'] ?? null)
+        ) {
+            Log::warning('Midtrans returned an invalid payment status response.', [
+                'order_id' => $paymentOrder->order_id,
+                'status' => $response->status(),
+            ]);
+
+            throw new MidtransGatewayException(
+                'Midtrans belum mengembalikan status transaksi yang valid. Coba perbarui status beberapa saat lagi.',
+            );
+        }
+
+        $receivedCents = $this->amountInCents($notification['gross_amount']);
+        $expectedCents = $this->amountInCents((string) $paymentOrder->amount);
+
+        if ($receivedCents === null || $receivedCents !== $expectedCents) {
+            Log::warning('Midtrans status amount did not match the booking payment order.', [
+                'order_id' => $paymentOrder->order_id,
+            ]);
+
+            throw new MidtransGatewayException(
+                'Nominal transaksi dari Midtrans tidak sesuai dengan order booking. Status tidak diubah; hubungi tim Finance.',
+            );
+        }
+
+        $this->applyTransactionStatus([
+            'order_id' => $paymentOrder->order_id,
+            'status_code' => $notification['status_code'],
+            'gross_amount' => $notification['gross_amount'],
+            'transaction_status' => $notification['transaction_status'],
+            'fraud_status' => is_string($notification['fraud_status'] ?? null) ? $notification['fraud_status'] : null,
+            'transaction_id' => is_string($notification['transaction_id'] ?? null) ? $notification['transaction_id'] : null,
+            'payment_type' => is_string($notification['payment_type'] ?? null) ? $notification['payment_type'] : null,
+        ], $paymentOrder);
+
+        return $paymentOrder->fresh()->status;
+    }
+
+    /** @param array<string, string|null> $notification */
+    private function applyTransactionStatus(array $notification, BookingPaymentOrder $paymentOrder): void
+    {
         DB::transaction(function () use ($notification, $paymentOrder): void {
             $booking = Booking::query()->lockForUpdate()->findOrFail($paymentOrder->booking_id);
             $lockedOrder = BookingPaymentOrder::query()->lockForUpdate()->findOrFail($paymentOrder->id);
@@ -230,8 +323,9 @@ class MidtransPaymentService
 
             $transactionStatus = strtolower($notification['transaction_status']);
             $isSuccessful = $notification['status_code'] === '200'
-                && in_array($transactionStatus, ['settlement', 'capture'], true)
-                && strtolower((string) ($notification['fraud_status'] ?? '')) === 'accept';
+                && ($transactionStatus === 'settlement'
+                    || ($transactionStatus === 'capture'
+                        && strtolower((string) ($notification['fraud_status'] ?? '')) === 'accept'));
 
             if ($isSuccessful) {
                 $payment = BookingPayment::query()->firstOrCreate(
@@ -284,6 +378,7 @@ class MidtransPaymentService
     private function paymentStageSummary(Booking $booking): array
     {
         $payments = $booking->payments()
+            ->reorder()
             ->selectRaw('stage, SUM(amount) as total')
             ->groupBy('stage')
             ->pluck('total', 'stage');

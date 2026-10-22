@@ -28,6 +28,9 @@
         @if(session('error'))
             <div role="alert" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ session('error') }}</div>
         @endif
+        @if(session('info'))
+            <div role="status" class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{{ session('info') }}</div>
+        @endif
 
         @if(($booking->status === 'booking' && $booking->blocking_until?->isPast() && ! $pendingPaymentOrder) || $autoCancelledByDeadline)
             <p role="alert" class="rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
@@ -106,6 +109,8 @@
                             </p>
                             @if($document->status === 'uploaded')
                                 <p class="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">Tersimpan di Google Drive</p>
+                            @elseif($document->status === 'archived')
+                                <p class="mt-2 text-sm font-medium text-zinc-500">Diarsipkan. File telah dihapus dari Google Drive karena kavling dialihkan.</p>
                             @elseif($document->status === 'failed')
                                 <p class="mt-2 text-sm font-medium text-rose-700 dark:text-rose-300">Upload Google Drive gagal</p>
                                 @if($document->upload_error)<p class="mt-1 text-sm text-rose-600">{{ $document->upload_error }}</p>@endif
@@ -197,6 +202,10 @@
                     @else
                         <p>Konfirmasi transaksi sedang diperiksa. Jangan membuat pembayaran baru untuk tahap ini.</p>
                     @endif
+                    <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.refresh', $booking) }}">
+                        @csrf
+                        <button type="submit" class="inline-flex rounded-lg border border-amber-700 px-4 py-2 font-semibold hover:bg-amber-100">Cek Status Pembayaran</button>
+                    </form>
                 </div>
             @elseif($nextPaymentStage && $nextPaymentStage['key'] === 'dp' && ! in_array($booking->status, ['cancelled', 'finish'], true))
                 <p class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
@@ -254,12 +263,45 @@
                             <tr>
                                 <td class="px-4 py-3">{{ $payment->paid_at?->format('d/m/Y H:i') }}</td>
                                 <td class="px-4 py-3">{{ ['dp' => 'Pembayaran DP', 'akad_fee' => 'Biaya Akad', 'bank_settlement' => 'Pembayaran DP (Bank)'][$payment->stage] ?? ucfirst($payment->stage) }}</td>
-                                <td class="px-4 py-3">{{ $payment->payment_method ?: '-' }}{{ $payment->reference ? ' / '.$payment->reference : '' }}<span class="block text-xs text-zinc-500">{{ $payment->notes }}</span></td>
+                                <td class="px-4 py-3">
+                                    {{ $payment->payment_method ?: '-' }}{{ $payment->reference ? ' / '.$payment->reference : '' }}
+                                    @if($payment->paymentOrder)
+                                        <span class="block text-xs text-zinc-500">Order: {{ $payment->paymentOrder->order_id }}</span>
+                                        <span class="block text-xs text-zinc-500">ID Transaksi: {{ $payment->paymentOrder->transaction_id ?: '-' }}</span>
+                                    @endif
+                                    <span class="block text-xs text-zinc-500">{{ $payment->notes }}</span>
+                                </td>
                                 <td class="px-4 py-3">{{ $payment->recordedBy?->name ?? '-' }}</td>
                                 <td class="px-4 py-3 text-right">Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}</td>
                             </tr>
                         @empty
                             <tr><td colspan="5" class="px-4 py-8 text-center text-zinc-500">Belum ada pembayaran tercatat.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="rounded-xl border border-zinc-200 bg-white p-6">
+            <h2 class="text-lg font-semibold">Riwayat Transaksi Midtrans</h2>
+            <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-zinc-50"><tr><th class="px-4 py-3">Waktu</th><th class="px-4 py-3">Order / ID Transaksi</th><th class="px-4 py-3">Tahap</th><th class="px-4 py-3">Metode</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Nominal</th></tr></thead>
+                    <tbody class="divide-y divide-zinc-200">
+                        @forelse($booking->paymentOrders as $paymentOrder)
+                            <tr>
+                                <td class="px-4 py-3">{{ $paymentOrder->created_at?->format('d/m/Y H:i') }}</td>
+                                <td class="px-4 py-3">
+                                    <span class="block">{{ $paymentOrder->order_id }}</span>
+                                    <span class="block text-xs text-zinc-500">ID Transaksi: {{ $paymentOrder->transaction_id ?: '-' }}</span>
+                                </td>
+                                <td class="px-4 py-3">{{ $paymentOrder->stage === 'dp' ? 'Pembayaran DP' : 'Biaya Akad' }}</td>
+                                <td class="px-4 py-3">{{ $paymentOrder->payment_type ? str_replace('_', ' ', $paymentOrder->payment_type) : '-' }}</td>
+                                <td class="px-4 py-3">{{ ucfirst($paymentOrder->status) }}</td>
+                                <td class="px-4 py-3 text-right">Rp {{ number_format((float) $paymentOrder->amount, 0, ',', '.') }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="6" class="px-4 py-8 text-center text-zinc-500">Belum ada transaksi Midtrans.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

@@ -321,6 +321,10 @@ Route::prefix('marketing')
             ->name('bookings.payments.store');
         Route::post('/bookings/{booking}/payments/midtrans', [MidtransBookingPaymentController::class, 'store'])
             ->name('bookings.payments.midtrans.store');
+        Route::post('/bookings/{booking}/payments/midtrans/refresh', [MidtransBookingPaymentController::class, 'refresh'])
+            ->name('bookings.payments.midtrans.refresh');
+        Route::get('/bookings/{booking}/payments/midtrans/return', [MidtransBookingPaymentController::class, 'returnFromCheckout'])
+            ->name('bookings.payments.midtrans.return');
     });
 
 Route::prefix('pemberkasan')

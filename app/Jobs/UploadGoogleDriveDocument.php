@@ -35,7 +35,7 @@ class UploadGoogleDriveDocument implements ShouldQueue
             return;
         }
 
-        if ($document->status === 'uploaded') {
+        if (in_array($document->status, ['uploaded', 'archived'], true)) {
             return;
         }
 

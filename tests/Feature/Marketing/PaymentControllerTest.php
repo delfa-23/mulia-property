@@ -2,6 +2,8 @@
 
 use App\Models\Block;
 use App\Models\Booking;
+use App\Models\BookingPayment;
+use App\Models\BookingPaymentOrder;
 use App\Models\Customer;
 use App\Models\Division;
 use App\Models\Lot;
@@ -116,7 +118,81 @@ it('requires marketing access to view booking payments', function () {
         ->assertForbidden();
 });
 
+it('shows detailed payment and Midtrans transaction history in the payment list', function () {
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $booking = makePaymentControllerTestBooking();
+    $paymentOrder = BookingPaymentOrder::query()->create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 2500000,
+        'order_id' => 'BK'.$booking->id.'-HISTORY',
+        'status' => 'paid',
+        'transaction_id' => 'midtrans-transaction-history',
+        'payment_type' => 'bank_transfer',
+    ]);
+    BookingPayment::query()->create([
+        'booking_id' => $booking->id,
+        'booking_payment_order_id' => $paymentOrder->id,
+        'stage' => 'dp',
+        'amount' => 2500000,
+        'paid_at' => '2026-10-21 10:30:00',
+        'payment_method' => 'Midtrans - bank_transfer',
+        'reference' => $paymentOrder->order_id,
+        'notes' => 'Pembayaran Midtrans terkonfirmasi.',
+        'recorded_by' => $user->id,
+    ]);
+    BookingPaymentOrder::query()->create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 1000000,
+        'order_id' => 'BK'.$booking->id.'-PENDINGHISTORY',
+        'status' => 'pending',
+        'redirect_url' => 'https://app.sandbox.midtrans.com/snap/v2/vtweb/pending',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('marketing.payments.index'))
+        ->assertViewIs('marketing.payments.index')
+        ->assertSee('Riwayat pembayaran')
+        ->assertSee('Riwayat transaksi Midtrans')
+        ->assertSee('21/10/2026 10:30')
+        ->assertSee('Midtrans - bank_transfer')
+        ->assertSee($paymentOrder->order_id)
+        ->assertSee('midtrans-transaction-history')
+        ->assertSee('Berhasil')
+        ->assertSee('Cek status pembayaran');
+});
+
 it('redirects guests to sign in before showing booking payments', function () {
     $this->get(route('marketing.payments.index'))
         ->assertRedirect(route('login'));
 });
+
+function makePaymentControllerTestBooking(): Booking
+{
+    $property = Property::create(['name' => 'Perumahan Riwayat']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 100000000,
+    ]);
+    $customer = Customer::create(['name' => 'Customer Riwayat']);
+
+    return Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-21',
+        'house_price_snapshot' => 100000000,
+        'akad_fee' => 2000000,
+        'status' => 'booking',
+    ]);
+}

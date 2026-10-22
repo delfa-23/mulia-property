@@ -52,6 +52,8 @@
                                         <span>·</span>
                                         @if($existingDocument->status === 'uploaded')
                                             <span class="font-medium text-emerald-700 dark:text-emerald-300">Tersimpan di Google Drive</span>
+                                        @elseif($existingDocument->status === 'archived')
+                                            <span class="font-medium text-zinc-500">Diarsipkan; file telah dihapus dari Google Drive</span>
                                         @elseif($existingDocument->status === 'failed')
                                             <span class="font-medium text-rose-700 dark:text-rose-300">Upload gagal, silakan pilih file untuk mencoba kembali</span>
                                         @else

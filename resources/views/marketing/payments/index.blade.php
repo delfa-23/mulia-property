@@ -145,12 +145,77 @@
                                     </div>
                                 @endforeach
                             </div>
+
+                            @if($booking->payments->isNotEmpty() || $booking->paymentOrders->isNotEmpty())
+                                <div class="grid gap-3 lg:grid-cols-2">
+                                    @if($booking->payments->isNotEmpty())
+                                        <section class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                            <h4 class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Riwayat pembayaran</h4>
+                                            <ul class="mt-2 divide-y divide-zinc-200 dark:divide-zinc-700">
+                                                @foreach($booking->payments as $payment)
+                                                    <li class="space-y-1 py-2 text-xs text-zinc-600 dark:text-zinc-300">
+                                                        <p class="font-medium text-zinc-800 dark:text-zinc-100">
+                                                            {{ $payment->paid_at?->format('d/m/Y H:i') ?? '-' }}
+                                                            · {{ ['dp' => 'Pembayaran DP', 'akad_fee' => 'Biaya Akad', 'bank_settlement' => 'Pembayaran DP (Bank)'][$payment->stage] ?? ucfirst($payment->stage) }}
+                                                            · Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}
+                                                        </p>
+                                                        <p>
+                                                            {{ $payment->payment_method ?: 'Metode tidak tersedia' }}
+                                                            @if($payment->reference) · Referensi {{ $payment->reference }} @endif
+                                                            @if($payment->recordedBy) · PIC {{ $payment->recordedBy->name }} @endif
+                                                        </p>
+                                                        @if($payment->paymentOrder)
+                                                            <p>
+                                                                Order {{ $payment->paymentOrder->order_id }}
+                                                                · ID transaksi {{ $payment->paymentOrder->transaction_id ?: '-' }}
+                                                            </p>
+                                                        @endif
+                                                        @if($payment->notes)
+                                                            <p>{{ $payment->notes }}</p>
+                                                        @endif
+                                                    </li>
+                                                @endforeach
+                                            </ul>
+                                        </section>
+                                    @endif
+
+                                    @if($booking->paymentOrders->isNotEmpty())
+                                        <section class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                            <h4 class="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Riwayat transaksi Midtrans</h4>
+                                            <ul class="mt-2 divide-y divide-zinc-200 dark:divide-zinc-700">
+                                                @foreach($booking->paymentOrders as $paymentOrder)
+                                                    <li class="space-y-1 py-2 text-xs text-zinc-600 dark:text-zinc-300">
+                                                        <p class="font-medium text-zinc-800 dark:text-zinc-100">
+                                                            {{ $paymentOrder->created_at?->format('d/m/Y H:i') ?? '-' }}
+                                                            · {{ $paymentOrder->stage === 'dp' ? 'Pembayaran DP' : 'Biaya Akad' }}
+                                                            · {{ [
+                                                                'pending' => 'Menunggu konfirmasi',
+                                                                'paid' => 'Berhasil',
+                                                                'failed' => 'Gagal',
+                                                                'expired' => 'Kedaluwarsa',
+                                                                'cancelled' => 'Dibatalkan',
+                                                            ][$paymentOrder->status] ?? ucfirst($paymentOrder->status) }}
+                                                            · Rp {{ number_format((float) $paymentOrder->amount, 0, ',', '.') }}
+                                                        </p>
+                                                        <p>
+                                                            Order {{ $paymentOrder->order_id }}
+                                                            · ID transaksi {{ $paymentOrder->transaction_id ?: '-' }}
+                                                            · Metode {{ $paymentOrder->payment_type ? str_replace('_', ' ', $paymentOrder->payment_type) : '-' }}
+                                                        </p>
+                                                    </li>
+                                                @endforeach
+                                            </ul>
+                                        </section>
+                                    @endif
+                                </div>
+                            @endif
+
                             <a href="{{ route('marketing.bookings.show', $booking) }}" class="inline-flex text-sm font-medium text-orange-700 hover:underline dark:text-orange-300" wire:navigate>Lihat detail booking dan riwayat pembayaran</a>
                         </div>
 
                         <div class="flex flex-col justify-center gap-3 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-800/60">
                             @if($pendingOrder)
-                                <p class="text-sm font-semibold text-amber-800 dark:text-amber-200">Transaksi Midtrans menunggu pembayaran</p>
+                                <p class="text-sm font-semibold text-amber-800 dark:text-amber-200">Transaksi Midtrans belum terkonfirmasi</p>
                                 <p class="text-sm text-zinc-600 dark:text-zinc-300">
                                     {{ $pendingOrder->stage === 'dp' ? 'Pembayaran DP' : 'Biaya Akad' }} · Rp {{ number_format((float) $pendingOrder->amount, 0, ',', '.') }}
                                 </p>
@@ -159,6 +224,11 @@
                                 @else
                                     <p class="text-sm text-zinc-600 dark:text-zinc-300">Transaksi sedang diperiksa. Jangan membuat pembayaran baru untuk tahap ini.</p>
                                 @endif
+                                <p class="text-xs text-zinc-600 dark:text-zinc-400">Jika customer sudah membayar, cek status untuk menyinkronkan konfirmasi terbaru dari Midtrans.</p>
+                                <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.refresh', $booking) }}">
+                                    @csrf
+                                    <button type="submit" class="w-full rounded-lg border border-amber-700 px-4 py-2.5 text-sm font-semibold text-amber-900 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-950">Cek status pembayaran</button>
+                                </form>
                             @elseif($nextStage && ! in_array($booking->status, ['cancelled', 'finish'], true) && ! $isExpired && floor($nextStage['remaining']) >= 1)
                                 <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.store', $booking) }}" class="space-y-3">
                                     @csrf

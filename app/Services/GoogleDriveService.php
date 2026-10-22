@@ -6,6 +6,7 @@ use App\Models\GoogleDriveToken;
 use Google\Client;
 use Google\Service\Drive;
 use Google\Service\Drive\DriveFile;
+use Google\Service\Exception;
 use RuntimeException;
 
 class GoogleDriveService
@@ -176,6 +177,19 @@ class GoogleDriveService
         return true;
     }
 
+    public function deleteFileIfExists(string $fileId): bool
+    {
+        try {
+            return $this->deleteFile($fileId);
+        } catch (Exception $exception) {
+            if ($exception->getCode() !== 404) {
+                throw $exception;
+            }
+
+            return false;
+        }
+    }
+
     public function updateFile(string $fileId, string $filePath, ?string $fileName = null, ?string $mimeType = null): array
     {
         if (! is_file($filePath)) {
@@ -184,6 +198,7 @@ class GoogleDriveService
 
         $metadata = new DriveFile([
             'name' => $this->sanitizeFileName($fileName ?: basename($filePath)),
+            'trashed' => false,
         ]);
 
         $result = $this->drive()->files->update($fileId, $metadata, [
@@ -200,6 +215,24 @@ class GoogleDriveService
             'mimeType' => $result->getMimeType(),
             'url' => $this->getFileUrl($result->getId()),
         ];
+    }
+
+    public function replaceFile(
+        string $fileId,
+        string $filePath,
+        string $folderId,
+        ?string $fileName = null,
+        ?string $mimeType = null,
+    ): array {
+        try {
+            return $this->updateFile($fileId, $filePath, $fileName, $mimeType);
+        } catch (Exception $exception) {
+            if ($exception->getCode() !== 404) {
+                throw $exception;
+            }
+
+            return $this->uploadFile($filePath, $fileName ?: basename($filePath), $folderId, $mimeType);
+        }
     }
 
     public function getFileUrl(string $fileId): string

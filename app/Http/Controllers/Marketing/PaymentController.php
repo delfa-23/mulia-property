@@ -24,7 +24,8 @@ class PaymentController extends Controller
             ->with([
                 'lot.block.property',
                 'customer',
-                'payments',
+                'payments.paymentOrder',
+                'payments.recordedBy',
                 'paymentOrders',
             ])
             ->when(

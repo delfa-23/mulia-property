@@ -35,4 +35,35 @@ class MidtransBookingPaymentController extends Controller
 
         return redirect()->away($order->redirect_url);
     }
+
+    public function refresh(Booking $booking, MidtransPaymentService $midtrans): RedirectResponse
+    {
+        return $this->refreshPaymentStatus($booking, $midtrans);
+    }
+
+    public function returnFromCheckout(Booking $booking, MidtransPaymentService $midtrans): RedirectResponse
+    {
+        return $this->refreshPaymentStatus($booking, $midtrans);
+    }
+
+    private function refreshPaymentStatus(Booking $booking, MidtransPaymentService $midtrans): RedirectResponse
+    {
+        try {
+            $status = $midtrans->refreshPendingPaymentOrder($booking);
+        } catch (MidtransGatewayException $exception) {
+            return to_route('marketing.bookings.show', $booking)
+                ->with('error', $exception->getMessage());
+        }
+
+        if ($status === 'paid') {
+            return to_route('marketing.bookings.show', $booking)
+                ->with('success', 'Pembayaran Midtrans sudah terkonfirmasi dan tercatat di riwayat pembayaran.');
+        }
+
+        $message = $status === 'none'
+            ? 'Tidak ada transaksi Midtrans yang sedang menunggu konfirmasi.'
+            : 'Status Midtrans sudah diperbarui: '.str_replace('_', ' ', $status).'.';
+
+        return to_route('marketing.bookings.show', $booking)->with('info', $message);
+    }
 }
