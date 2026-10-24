@@ -25,6 +25,7 @@ use App\Http\Controllers\Marketing\MarketingLeadController;
 use App\Http\Controllers\Marketing\MarketingLeadFollowUpController;
 use App\Http\Controllers\Marketing\MarketingLeadReportController;
 use App\Http\Controllers\Marketing\MidtransBookingPaymentController;
+use App\Http\Controllers\Marketing\PaymentArchiveController as MarketingPaymentArchiveController;
 use App\Http\Controllers\Marketing\PaymentController as MarketingPaymentController;
 use App\Http\Controllers\Marketing\SalesController as MarketingSalesController;
 use App\Http\Controllers\Marketing\SitePlanController as MarketingSitePlanController;
@@ -291,6 +292,10 @@ Route::prefix('marketing')
     ->group(function () {
         Route::get('/dashboard', [MarketingDashboardController::class, 'index'])->name('dashboard');
         Route::get('/payments', [MarketingPaymentController::class, 'index'])->name('payments.index');
+        Route::post('/payments/{booking}/archive', [MarketingPaymentArchiveController::class, 'store'])
+            ->name('payments.archive.store');
+        Route::delete('/payments/{booking}/archive', [MarketingPaymentArchiveController::class, 'destroy'])
+            ->name('payments.archive.destroy');
         Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
         Route::get('/properties/{property}/site-plan', [MarketingSitePlanController::class, 'edit'])
             ->name('site-plans.edit');

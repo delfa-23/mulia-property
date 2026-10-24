@@ -166,13 +166,20 @@
             </div>
 
             <aside @class([
+                'space-y-4 xl:flex xl:min-h-full xl:flex-col xl:justify-between xl:space-y-0' => ! $wide,
                 'space-y-4',
                 'flex flex-wrap items-start gap-4' => $wide,
             ])>
-                <div class="flex flex-wrap gap-x-3 gap-y-2" aria-label="Keterangan warna status kavling">
+                <div @class([
+                    'flex flex-col gap-3',
+                    'xl:flex-1 xl:justify-evenly' => ! $wide,
+                ]) aria-label="Keterangan warna status kavling">
                     @foreach($lotStatuses as $status)
-                        <span class="inline-flex items-center gap-1.5 text-xs text-slate-600">
-                            <span class="size-2.5 rounded-sm border" style="background-color: {{ $status['fill'] ?? $status['color'] }}; border-color: {{ $status['color'] }}"></span>
+                        <span @class([
+                            'inline-flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-zinc-200',
+                            'xl:min-h-12 xl:rounded-lg xl:border xl:border-slate-200 xl:bg-slate-50 xl:px-3 xl:py-2 dark:xl:border-zinc-700 dark:xl:bg-zinc-800' => ! $wide,
+                        ])>
+                            <span class="size-4 shrink-0 rounded-full border-2 shadow-sm" style="background-color: {{ $status['color'] }}; border-color: {{ $status['color'] }}"></span>
                             {{ $status['label'] }}
                         </span>
                     @endforeach

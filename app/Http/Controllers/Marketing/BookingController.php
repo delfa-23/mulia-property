@@ -467,6 +467,12 @@ class BookingController extends Controller
             422,
             'Booking tidak dapat dihapus selama transaksi Midtrans masih menunggu pembayaran.',
         );
+        abort_if(
+            $booking->payments()->exists()
+                || $booking->paymentOrders()->where('status', 'paid')->exists(),
+            422,
+            'Booking tidak dapat dihapus karena memiliki riwayat pembayaran. Batalkan booking dan simpan riwayat transaksi untuk keperluan keuangan.',
+        );
 
         try {
             $documentService->deleteBookingDocuments($booking);

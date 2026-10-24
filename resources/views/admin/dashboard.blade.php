@@ -333,34 +333,32 @@
                 Keuangan
             </h2>
 
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <p class="text-sm text-gray-500 dark:text-zinc-400">
-                        Uang Masuk
-                    </p>
-
-                    <p class="mt-2 text-2xl font-bold text-green-600">
-                        Rp {{ number_format($stats['total_income'], 0, ',', '.') }}
-                    </p>
+                <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <p class="text-sm font-semibold text-gray-600 dark:text-zinc-400">Uang Masuk</p>
+                    <p class="mt-2 break-words text-xl font-bold leading-snug text-green-600">Rp {{ number_format($stats['total_income'], 0, ',', '.') }}</p>
                 </div>
 
-                <div class="grid gap-4 md:grid-cols-3">
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-gray-500">RAB</p><p class="mt-2 text-2xl font-bold">Rp {{ number_format($stats['total_budget'], 0, ',', '.') }}</p></div>
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-gray-500">Depiasi</p><p class="mt-2 text-2xl font-bold {{ $stats['deviation'] < 0 ? 'text-red-600' : 'text-green-600' }}">Rp {{ number_format($stats['deviation'], 0, ',', '.') }}</p></div>
-                    <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-gray-500">Progress Fisik / Fasilitas</p><p class="mt-2 text-2xl font-bold text-blue-600">{{ number_format($stats['physical_progress'], 2) }}% / {{ number_format($stats['facility_progress'], 2) }}%</p></div>
+                <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <p class="text-sm font-semibold text-gray-600 dark:text-zinc-400">RAB</p>
+                    <p class="mt-2 break-words text-xl font-bold leading-snug">Rp {{ number_format($stats['total_budget'], 0, ',', '.') }}</p>
                 </div>
 
-                <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <p class="text-sm text-gray-500 dark:text-zinc-400">
-                        Pengeluaran
-                    </p>
-
-                    <p class="mt-2 text-2xl font-bold text-red-600">
-                        Rp {{ number_format($stats['total_expense'], 0, ',', '.') }}
-                    </p>
+                <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <p class="text-sm font-semibold text-gray-600 dark:text-zinc-400">Depiasi</p>
+                    <p class="mt-2 break-words text-xl font-bold leading-snug {{ $stats['deviation'] < 0 ? 'text-red-600' : 'text-green-600' }}">Rp {{ number_format($stats['deviation'], 0, ',', '.') }}</p>
                 </div>
 
+                <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <p class="text-sm font-semibold text-gray-600 dark:text-zinc-400">Progress Fisik / Fasilitas</p>
+                    <p class="mt-2 break-words text-xl font-bold leading-snug text-blue-600">{{ number_format($stats['physical_progress'], 2) }}% / {{ number_format($stats['facility_progress'], 2) }}%</p>
+                </div>
+
+                <div class="min-w-0 rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <p class="text-sm font-semibold text-gray-600 dark:text-zinc-400">Pengeluaran</p>
+                    <p class="mt-2 break-words text-xl font-bold leading-snug text-red-600">Rp {{ number_format($stats['total_expense'], 0, ',', '.') }}</p>
+                </div>
             </div>
         </div>
 

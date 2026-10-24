@@ -102,7 +102,7 @@
                 <div class="mt-5 space-y-2.5">
                     @foreach($lotStatusChart as $status)
                         <div class="flex items-center justify-between gap-3 text-sm">
-                            <span class="flex min-w-0 items-center gap-2 font-medium text-slate-700 dark:text-zinc-300">
+                            <span class="flex min-w-0 items-center gap-2 font-semibold text-slate-700 dark:text-zinc-300">
                                 <span class="size-2.5 shrink-0 rounded-sm" style="background-color: {{ $status['color'] }}"></span>
                                 <span class="truncate">{{ $status['label'] }}</span>
                             </span>
@@ -151,7 +151,7 @@
                             @foreach($facilityProgressChart as $facility)
                                 <div>
                                     <div class="mb-1.5 flex justify-between gap-3 text-sm">
-                                        <span class="min-w-0 truncate font-semibold text-slate-700 dark:text-zinc-300">{{ $facility['name'] }}<span class="ml-1 font-normal text-slate-500 dark:text-zinc-400">{{ $facility['property'] }}</span></span>
+                                        <span class="min-w-0 truncate font-semibold text-slate-950 dark:text-white">{{ $facility['name'] }}<span class="ml-1 font-normal text-slate-950 dark:text-white">{{ $facility['property'] }}</span></span>
                                         <span class="shrink-0 font-bold text-slate-950 dark:text-white">{{ number_format($facility['progress'], 1) }}%</span>
                                     </div>
                                     <div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">

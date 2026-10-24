@@ -35,6 +35,7 @@ class Booking extends Model
         return [
             'booking_date' => 'date',
             'blocking_until' => 'datetime',
+            'payment_archived_at' => 'datetime',
             'house_price_snapshot' => 'decimal:2',
             'dp_percentage' => 'decimal:2',
             'akad_fee' => 'decimal:2',

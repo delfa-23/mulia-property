@@ -157,6 +157,49 @@ it('keeps a cancelled booking when deleting its Google Drive documents fails', f
     $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'booked']);
 });
 
+it('does not delete a cancelled booking with recorded payments', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Riwayat Pembayaran']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Pembayaran']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'cancelled',
+    ]);
+    $payment = BookingPayment::create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 2500000,
+        'paid_at' => now(),
+        'payment_method' => 'Midtrans - bank_transfer',
+        'reference' => 'BK'.$booking->id.'-PAID',
+    ]);
+
+    $this->actingAs($user)
+        ->delete(route('marketing.bookings.destroy', $booking))
+        ->assertUnprocessable()
+        ->assertSee('Booking tidak dapat dihapus karena memiliki riwayat pembayaran.');
+
+    $this->assertModelExists($booking);
+    $this->assertModelExists($payment);
+});
+
 it('filters marketing bookings by selected customer', function () {
     $division = Division::create([
         'name' => 'Marketing',

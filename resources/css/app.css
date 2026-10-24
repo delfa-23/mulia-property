@@ -156,6 +156,10 @@
     background-color: #f1f5f9;
 }
 
+.app-main :is([class~='dark:hover:bg-zinc-800']):hover {
+    background-color: #f1f5f9;
+}
+
 .app-main :is(table, thead, th, td) {
     border-color: #e2e8f0;
 }
@@ -191,6 +195,16 @@
 
 .app-main :is([class~='dark:text-white'], [class~='dark:text-zinc-100'], [class~='dark:text-zinc-200']) {
     color: #10233d;
+}
+
+.app-main :is([class~='dark:text-zinc-300'], [class~='dark:text-gray-300']) {
+    color: #334155;
+    font-weight: 600;
+}
+
+.app-main :is([class~='dark:text-zinc-400'], [class~='dark:text-gray-400']) {
+    color: #475569;
+    font-weight: 500;
 }
 
 .app-sidebar {

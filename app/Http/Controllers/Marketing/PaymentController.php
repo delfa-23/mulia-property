@@ -18,7 +18,9 @@ class PaymentController extends Controller
             'property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'status' => ['nullable', Rule::in(['booking', 'process', 'akad', 'finish', 'cancelled'])],
             'search' => ['nullable', 'string', 'max:100'],
+            'archive' => ['nullable', Rule::in(['active', 'archived'])],
         ]);
+        $archive = $filters['archive'] ?? 'active';
 
         $bookings = Booking::query()
             ->with([
@@ -38,6 +40,11 @@ class PaymentController extends Controller
             ->when(
                 isset($filters['status']),
                 fn ($query) => $query->where('status', $filters['status']),
+            )
+            ->when(
+                $archive === 'archived',
+                fn ($query) => $query->whereNotNull('payment_archived_at'),
+                fn ($query) => $query->whereNull('payment_archived_at'),
             )
             ->when(
                 isset($filters['search']),
@@ -70,6 +77,11 @@ class PaymentController extends Controller
                     'nextStage' => collect($summary['stages'])
                         ->first(fn (array $stage): bool => $stage['remaining'] > 0.009),
                     'pendingOrder' => $pendingOrder,
+                    'canArchive' => $booking->payment_archived_at === null
+                        && $pendingOrder === null
+                        && collect($summary['stages'])->every(
+                            fn (array $stage): bool => $stage['remaining'] <= 0.009,
+                        ),
                 ];
             });
 
@@ -77,6 +89,7 @@ class PaymentController extends Controller
             'bookings' => $bookings,
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'filters' => $filters,
+            'archive' => $archive,
             'midtransConfigured' => is_string(config('services.midtrans.server_key'))
                 && config('services.midtrans.server_key') !== '',
         ]);

@@ -171,6 +171,81 @@ it('shows detailed payment and Midtrans transaction history in the payment list'
         ->assertSee('Cek status pembayaran');
 });
 
+it('allows fully paid bookings to be manually archived and restored', function () {
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $booking = makePaymentControllerTestBooking();
+    BookingPayment::query()->create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 100000000,
+        'paid_at' => '2026-10-21 10:30:00',
+        'payment_method' => 'Midtrans - bank_transfer',
+    ]);
+    BookingPayment::query()->create([
+        'booking_id' => $booking->id,
+        'stage' => 'akad_fee',
+        'amount' => 2000000,
+        'paid_at' => '2026-10-21 11:30:00',
+        'payment_method' => 'Transfer bank',
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('marketing.payments.archive.store', $booking))
+        ->assertRedirect(route('marketing.payments.index', ['archive' => 'active']))
+        ->assertSessionHas('success', 'Pembayaran lunas berhasil dimasukkan ke arsip.');
+
+    expect($booking->fresh()->payment_archived_at)->not->toBeNull();
+    $this->assertDatabaseHas('activity_logs', [
+        'action' => 'booking.payment_archived',
+        'subject_id' => $booking->id,
+    ]);
+    $this->actingAs($user)
+        ->get(route('marketing.payments.index'))
+        ->assertDontSee('Customer Riwayat');
+    $this->actingAs($user)
+        ->get(route('marketing.payments.index', ['archive' => 'archived']))
+        ->assertSee('Customer Riwayat')
+        ->assertSee('Kembalikan ke pembayaran aktif');
+
+    $this->actingAs($user)
+        ->delete(route('marketing.payments.archive.destroy', $booking))
+        ->assertRedirect(route('marketing.payments.index', ['archive' => 'archived']))
+        ->assertSessionHas('success', 'Pembayaran dikembalikan ke daftar pembayaran aktif.');
+
+    expect($booking->fresh()->payment_archived_at)->toBeNull();
+    $this->assertDatabaseHas('activity_logs', [
+        'action' => 'booking.payment_archive_restored',
+        'subject_id' => $booking->id,
+    ]);
+});
+
+it('does not allow a booking with an unpaid balance to be archived', function () {
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $booking = makePaymentControllerTestBooking();
+
+    $this->actingAs($user)
+        ->post(route('marketing.payments.archive.store', $booking))
+        ->assertUnprocessable();
+
+    expect($booking->fresh()->payment_archived_at)->toBeNull();
+});
+
 it('redirects guests to sign in before showing booking payments', function () {
     $this->get(route('marketing.payments.index'))
         ->assertRedirect(route('login'));

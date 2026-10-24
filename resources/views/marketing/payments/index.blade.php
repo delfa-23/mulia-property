@@ -53,6 +53,7 @@
         </div>
 
         <form method="GET" action="{{ route('marketing.payments.index') }}" class="space-y-4 rounded-xl border border-[#dbe2ea] bg-white p-4 shadow-sm sm:p-5">
+            <input type="hidden" name="archive" value="{{ $archive }}">
             <div>
                 <h2 class="text-base font-semibold text-[#10233d]">Cari pembayaran</h2>
                 <p class="mt-1 text-sm text-[#64748b]">Persempit daftar berdasarkan perumahan, status booking, atau customer.</p>
@@ -87,11 +88,32 @@
             </div>
         </form>
 
+        <nav aria-label="Daftar pembayaran" class="flex flex-wrap gap-2">
+            <a
+                href="{{ route('marketing.payments.index', array_merge(request()->except('archive'), ['archive' => 'active'])) }}"
+                @class([
+                    'rounded-lg px-4 py-2 text-sm font-semibold',
+                    'bg-orange-600 text-white' => $archive === 'active',
+                    'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200' => $archive !== 'active',
+                ])
+                wire:navigate
+            >Pembayaran Aktif</a>
+            <a
+                href="{{ route('marketing.payments.index', array_merge(request()->except('archive'), ['archive' => 'archived'])) }}"
+                @class([
+                    'rounded-lg px-4 py-2 text-sm font-semibold',
+                    'bg-orange-600 text-white' => $archive === 'archived',
+                    'border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200' => $archive !== 'archived',
+                ])
+                wire:navigate
+            >Arsip Pembayaran</a>
+        </nav>
+
         <section class="overflow-hidden rounded-xl border border-[#dbe2ea] bg-white shadow-sm">
             <div class="flex items-center justify-between gap-3 border-b border-[#e2e8f0] px-5 py-4">
                 <div>
-                    <h2 class="font-semibold text-[#10233d]">Daftar pembayaran</h2>
-                    <p class="mt-0.5 text-sm text-[#64748b]">Tagihan dan transaksi per booking</p>
+                    <h2 class="font-semibold text-[#10233d]">{{ $archive === 'archived' ? 'Arsip pembayaran' : 'Daftar pembayaran aktif' }}</h2>
+                    <p class="mt-0.5 text-sm text-[#64748b]">{{ $archive === 'archived' ? 'Riwayat booking yang pembayarannya telah diarsipkan' : 'Tagihan dan transaksi per booking' }}</p>
                 </div>
                 <span class="rounded-full bg-[#f1f5f9] px-3 py-1 text-sm font-semibold text-[#334155]">{{ $bookings->total() }} booking</span>
             </div>
@@ -210,7 +232,19 @@
                                 </div>
                             @endif
 
-                            <a href="{{ route('marketing.bookings.show', $booking) }}" class="inline-flex text-sm font-medium text-orange-700 hover:underline dark:text-orange-300" wire:navigate>Lihat detail booking dan riwayat pembayaran</a>
+                            @if($archive === 'archived')
+                                <form method="POST" action="{{ route('marketing.payments.archive.destroy', $booking) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-lg border border-amber-700 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-600/30 focus:ring-offset-2 dark:border-amber-500 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-amber-950">Kembalikan ke pembayaran aktif</button>
+                                </form>
+                            @elseif($row['canArchive'])
+                                <form method="POST" action="{{ route('marketing.payments.archive.store', $booking) }}">
+                                    @csrf
+                                    <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-600/40 focus:ring-offset-2 dark:bg-emerald-600 dark:hover:bg-emerald-500">Arsipkan pembayaran lunas</button>
+                                </form>
+                            @endif
+                            <a href="{{ route('marketing.bookings.show', $booking) }}" class="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#c2410c] bg-white px-4 py-2.5 text-center text-sm font-semibold text-[#9a3412] shadow-sm transition hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-600/30 focus:ring-offset-2 dark:border-orange-500 dark:bg-zinc-900 dark:text-orange-300 dark:hover:bg-orange-950" wire:navigate>Lihat detail booking dan riwayat pembayaran</a>
                         </div>
 
                         <div class="flex flex-col justify-center gap-3 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-800/60">
