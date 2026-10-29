@@ -41,6 +41,11 @@ class ConstructionProgress extends Model
         );
     }
 
+    public function weightedProgressPercentage(): float
+    {
+        return (float) $this->progress * (float) ($this->stage?->max_progress ?? 0) / 100;
+    }
+
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(

@@ -71,48 +71,25 @@
                     @enderror
                 </div>
 
-                <div class="grid gap-5 sm:grid-cols-2">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-zinc-300">
-                            Progress Minimum (%)
-                        </label>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-zinc-300">
+                        Bobot (%)
+                    </label>
 
-                        <input
-                            type="number"
-                            name="min_progress"
-                            value="{{ old('min_progress', $constructionStage->min_progress) }}"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            required
-                            class="mt-1 block w-full rounded-lg border-gray-300 dark:border-zinc-700 dark:bg-zinc-800"
-                        >
+                    <input
+                        type="number"
+                        name="max_progress"
+                        value="{{ old('max_progress', $constructionStage->max_progress) }}"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        required
+                        class="mt-1 block w-full rounded-lg border-gray-300 dark:border-zinc-700 dark:bg-zinc-800"
+                    >
 
-                        @error('min_progress')
-                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-zinc-300">
-                            Progress Maksimum (%)
-                        </label>
-
-                        <input
-                            type="number"
-                            name="max_progress"
-                            value="{{ old('max_progress', $constructionStage->max_progress) }}"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            required
-                            class="mt-1 block w-full rounded-lg border-gray-300 dark:border-zinc-700 dark:bg-zinc-800"
-                        >
-
-                        @error('max_progress')
-                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                        @enderror
-                    </div>
+                    @error('max_progress')
+                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                    @enderror
                 </div>
 
                 <div>

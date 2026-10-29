@@ -149,7 +149,7 @@
 
                         @forelse($lots as $lot)
 
-                            <tr class="hover:bg-gray-50 dark:hover:bg-zinc-800">
+                            <tr class="hover:bg-gray-100">
 
                                 <td class="px-5 py-4 text-sm text-gray-900 dark:text-white">
                                     {{ $lot->block->property->name }}
@@ -170,7 +170,7 @@
 
                                     $depiasi = $rab - $realisasi;
 
-                                    $progressFisik = (float) ($lot->constructionProgresses->whereNotNull('stage_id')->max('progress') ?? 0);
+                                    $progressFisik = $lot->constructionProgressPercentage();
                                 @endphp
 
                                 <td class="px-5 py-4 text-sm text-gray-700 dark:text-zinc-300">

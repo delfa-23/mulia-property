@@ -4,7 +4,8 @@
         $rab = $lot->budgets->sum('amount');
         $realisasi = (float) $constructionRealizationTotal;
         $depiasi = $rab - $realisasi;
-        $progressFisik = (float) ($lot->constructionProgresses->whereNotNull('stage_id')->max('progress') ?? 0);
+        $progressFisik = $lot->constructionProgressPercentage();
+        $isAdmin = auth()->user()->isAdmin();
 
         $booking = $lot->bookings->first();
         $customer = $booking?->customer;
@@ -41,8 +42,7 @@
                 updateUrl: @js(route('pembangunan.progress.records.update', [$property, $block, $lot, '__PROGRESS_ID__'])),
                 stageId: '',
                 stageName: '',
-                minProgress: 0,
-                maxProgress: 100,
+                stageWeight: 0,
                 progress: 0,
                 realization: 0,
                 notes: '',
@@ -51,15 +51,20 @@
                     return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
                 },
 
-                openEditModal(progressId, id, name, min, max, current, amount, note) {
-                    this.progressId = progressId;
-                    this.stageId = id;
-                    this.stageName = name;
-                    this.minProgress = min;
-                    this.maxProgress = max;
-                    this.progress = current;
-                    this.realization = this.formatRupiah(amount);
-                    this.notes = note;
+                weightedProgress() {
+                    return Number(this.progress || 0) * Number(this.stageWeight || 0) / 100;
+                },
+
+                openEditModal(button) {
+                    this.progressId = button.dataset.progressId
+                        ? Number(button.dataset.progressId)
+                        : null;
+                    this.stageId = Number(button.dataset.stageId);
+                    this.stageName = button.dataset.stageName;
+                    this.stageWeight = Number(button.dataset.stageWeight);
+                    this.progress = Number(button.dataset.progress);
+                    this.realization = this.formatRupiah(button.dataset.realization);
+                    this.notes = button.dataset.notes;
                     this.modalOpen = true;
                 },
 
@@ -177,11 +182,11 @@
                     </h2>
 
                     <p class="mt-1 text-sm text-gray-500">
-                        Progress keseluruhan sementara.
+                        Total progress dihitung dari progress tiap tahap dikalikan bobotnya.
                     </p>
                 </div>
 
-                <span class="text-2xl font-bold text-blue-600">
+                <span class="text-2xl font-bold text-red-700 dark:text-red-300">
                     {{ number_format($progressFisik, 2) }}%
                 </span>
 
@@ -190,7 +195,7 @@
             <div class="mt-5 h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-zinc-700">
 
                 <div
-                    class="h-full rounded-full bg-blue-600"
+                    class="h-full rounded-full bg-red-600"
                     style="width: {{ min(100, max(0, $progressFisik)) }}%"
                 ></div>
 
@@ -210,7 +215,7 @@
                 </h2>
 
                 <p class="mt-1 text-sm text-zinc-500">
-                    Tambah, edit, atau hapus laporan setiap tahap. Progress mengikuti range yang telah ditentukan Admin.
+                    Isi progress pekerjaan 0–100%. Bobot hasil tiap tahap adalah progress dikalikan bobot tahap.
                 </p>
             </div>
 
@@ -218,9 +223,10 @@
                 <table class="w-full text-left text-sm">
                     <thead class="bg-zinc-50 dark:bg-zinc-800">
                         <tr>
-                            <th class="px-6 py-3">Tahapan</th>
-                            <th class="px-6 py-3">Range</th>
-                            <th class="px-6 py-3">Progress</th>
+                            <th class="bg-green-50 px-6 py-3 text-green-800">Tahapan</th>
+                            <th class="bg-green-50 px-6 py-3 text-green-800">Bobot</th>
+                            <th class="bg-orange-50 px-6 py-3 text-orange-800">Progress</th>
+                            <th class="bg-red-50 px-6 py-3 text-red-800">Bobot Hasil</th>
                             <th class="px-6 py-3">Realisasi</th>
                             <th class="px-6 py-3">Catatan</th>
                             <th class="px-6 py-3">Terakhir Update</th>
@@ -235,10 +241,12 @@
                             @php
                                 $progressData = $lot->constructionProgresses
                                     ->firstWhere('stage_id', $stage->id);
+                                $stageProgress = (float) ($progressData?->progress ?? 0);
+                                $weightedProgress = $progressData?->weightedProgressPercentage() ?? 0;
                             @endphp
 
                             <tr>
-                                <td class="px-6 py-4">
+                                <td class="bg-green-50/60 px-6 py-4">
                                     <div class="font-medium">
                                         {{ $stage->name }}
                                     </div>
@@ -250,27 +258,23 @@
                                     @endif
                                 </td>
 
-                                <td class="px-6 py-4">
-                                    <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                                        {{ number_format($stage->min_progress, 0) }}%
-                                        -
-                                        {{ number_format($stage->max_progress, 0) }}%
+                                <td class="bg-green-50/60 px-6 py-4">
+                                    <span class="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                                        {{ number_format((float) $stage->max_progress, 2) }}%
                                     </span>
                                 </td>
 
-                                <td class="px-6 py-4">
-                                    @if($progressData)
-                                        <span class="font-semibold">
-                                            {{ number_format($progressData->progress, 2) }}%
-                                        </span>
-                                    @else
-                                        <span class="text-zinc-400">
-                                            Belum diisi
-                                        </span>
-                                    @endif
+                                <td class="bg-orange-50/60 px-6 py-4">
+                                    <span class="font-semibold text-orange-800">
+                                        {{ number_format($stageProgress, 2) }}%
+                                    </span>
                                 </td>
 
-                                <td class="px-6 py-4 whitespace-nowrap">
+                                <td class="bg-red-50/60 px-6 py-4 font-semibold text-red-700 dark:text-red-300">
+                                    {{ number_format($weightedProgress, 2) }}%
+                                </td>
+
+                                <td class="bg-green-50/60 px-6 py-4 whitespace-nowrap">
                                     Rp {{ number_format((float) ($progressData?->realization ?? 0), 0, ',', '.') }}
                                 </td>
 
@@ -289,21 +293,19 @@
                                 <td class="px-6 py-4 text-right">
                                     <button
                                         type="button"
-                                        @click="openEditModal(
-                                            {{ $progressData?->id ?? 'null' }},
-                                            {{ $stage->id }},
-                                            @js($stage->name),
-                                            {{ $stage->min_progress }},
-                                            {{ $stage->max_progress }},
-                                            {{ $progressData?->progress ?? $stage->min_progress }},
-                                            {{ $progressData?->realization ?? 0 }},
-                                            @js($progressData?->notes ?? '')
-                                        )"
-                                        class="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+                                        @click="openEditModal($el)"
+                                        data-progress-id="{{ $progressData?->id }}"
+                                        data-stage-id="{{ $stage->id }}"
+                                        data-stage-name="{{ $stage->name }}"
+                                        data-stage-weight="{{ $stage->max_progress }}"
+                                        data-progress="{{ $progressData?->progress ?? 0 }}"
+                                        data-realization="{{ $progressData?->realization ?? 0 }}"
+                                        data-notes="{{ $progressData?->notes ?? '' }}"
+                                        class="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
                                     >
                                         {{ $progressData ? 'Edit Progress' : 'Tambah Progress' }}
                                     </button>
-                                    @if($progressData)
+                                    @if($progressData && $isAdmin)
                                         <form
                                             method="POST"
                                             action="{{ route('pembangunan.progress.records.destroy', [$property, $block, $lot, $progressData]) }}"
@@ -457,13 +459,11 @@
 
                 <div>
                     <label class="mb-2 block text-sm font-medium">
-                        Range Progress
+                        Bobot Tahap
                     </label>
 
-                    <div class="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700">
-                        <span x-text="minProgress"></span>%
-                        -
-                        <span x-text="maxProgress"></span>%
+                    <div class="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
+                        <span x-text="stageWeight"></span>%
                     </div>
                 </div>
 
@@ -480,18 +480,32 @@
                         type="number"
                         name="progress"
                         x-model="progress"
-                        :min="minProgress"
-                        :max="maxProgress"
+                        min="0"
+                        max="100"
                         step="0.01"
                         required
-                        class="w-full rounded-lg border border-zinc-300 px-4 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                        class="w-full rounded-lg border border-orange-300 bg-orange-50 px-4 py-2 dark:border-orange-700 dark:bg-zinc-800"
                     >
 
                     <p class="mt-1 text-xs text-zinc-500">
-                        Nilai harus berada dalam range yang ditentukan Admin.
+                        Masukkan progress pekerjaan aktual dari 0 sampai 100%.
                     </p>
                 </div>
 
+                <div>
+                    <label class="mb-2 block text-sm font-medium">
+                        Bobot Hasil Tahap
+                    </label>
+
+                    <div class="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">
+                        <span x-text="weightedProgress().toFixed(2)"></span>%
+                    </div>
+                    <p class="mt-1 text-xs text-zinc-500">
+                        Progress (%) × Bobot (%) ÷ 100.
+                    </p>
+                </div>
+
+                @if($isAdmin)
                 <div>
                     <label
                         for="modal-notes"
@@ -527,12 +541,13 @@
                         data-currency-input
                         data-currency-min="0"
                         required
-                        class="w-full rounded-lg border border-zinc-300 px-4 py-2 dark:border-zinc-600 dark:bg-zinc-800"
+                        class="w-full rounded-lg border border-green-300 bg-green-50 px-4 py-2 dark:border-green-700 dark:bg-zinc-800"
                     >
                     <p class="mt-1 text-xs text-zinc-500">
                         Nominal akan dikirim sebagai angka dan disimpan tanpa format.
                     </p>
                 </div>
+                @endif
 
             </div>
 

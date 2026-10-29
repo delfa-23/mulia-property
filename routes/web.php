@@ -198,15 +198,6 @@ Route::prefix('pembangunan')
         Route::get('/dashboard', [PembangunanDashboardController::class, 'index'])
             ->name('dashboard');
 
-        Route::get('/construction-stages', [PropertyController::class, 'constructionStages'])
-            ->name('property-construction-stages.index');
-        Route::post('/properties/{property}/construction-stages', [PropertyController::class, 'storeConstructionStage'])
-            ->name('property-construction-stages.store');
-        Route::put('/properties/{property}/construction-stages/{constructionStage}', [PropertyController::class, 'updateConstructionStage'])
-            ->name('property-construction-stages.update');
-        Route::delete('/properties/{property}/construction-stages/{constructionStage}', [PropertyController::class, 'destroyConstructionStage'])
-            ->name('property-construction-stages.destroy');
-
         Route::get(
             '/properties/{property}/blocks/{block}/lots/{lot}/edit',
             [LotController::class, 'edit']

@@ -213,7 +213,7 @@ test('admin dashboard charts show only the selected lot status and financial tot
         });
 });
 
-test('admin dashboard averages each lot highest construction progress within selected filters', function () {
+test('admin dashboard averages weighted construction progress within selected filters', function () {
     $admin = User::factory()->create(['role' => 'admin']);
     $property = Property::create(['name' => 'Perumahan Progress']);
     $otherProperty = Property::create(['name' => 'Perumahan Lain']);
@@ -231,6 +231,12 @@ test('admin dashboard averages each lot highest construction progress within sel
         'house_price' => 500000000,
         'status' => 'available',
     ]);
+    Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '04',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
     $otherLot = Lot::create([
         'block_id' => $otherBlock->id,
         'lot_number' => '03',
@@ -238,10 +244,10 @@ test('admin dashboard averages each lot highest construction progress within sel
         'status' => 'available',
     ]);
     $stages = collect([
-        ['name' => 'Tahap 1', 'min_progress' => 1, 'max_progress' => 20],
-        ['name' => 'Tahap 2', 'min_progress' => 21, 'max_progress' => 50],
-        ['name' => 'Tahap 3', 'min_progress' => 1, 'max_progress' => 10],
-        ['name' => 'Tahap 4', 'min_progress' => 51, 'max_progress' => 100],
+        ['name' => 'Tahap 1', 'max_progress' => 20],
+        ['name' => 'Tahap 2', 'max_progress' => 40],
+        ['name' => 'Tahap 3', 'max_progress' => 30],
+        ['name' => 'Tahap 4', 'max_progress' => 10],
     ])->map(fn (array $attributes, int $order): ConstructionStage => ConstructionStage::create([
         ...$attributes,
         'order' => $order + 1,
@@ -283,7 +289,7 @@ test('admin dashboard averages each lot highest construction progress within sel
         'property_id' => $property->id,
     ]));
 
-    $response->assertViewHas('stats', fn (array $stats): bool => $stats['physical_progress'] === 26.5);
+    $response->assertViewHas('stats', fn (array $stats): bool => $stats['physical_progress'] === 7.6);
 });
 
 test('construction dashboard filters lot progress statistics by property and block', function () {
@@ -514,7 +520,7 @@ test('construction dashboard totals RAB and facility budgets for the selected pr
         Budget::create([
             'property_id' => $property->id,
             'lot_id' => $lot->id,
-            'name' => 'RAB Deret',
+            'name' => 'RAB Couple',
             'category' => 'Bangunan Rumah',
             'purpose' => 'pembangunan',
             'amount' => 78000000,
@@ -531,7 +537,7 @@ test('construction dashboard totals RAB and facility budgets for the selected pr
         Budget::create([
             'property_id' => $property->id,
             'lot_id' => $lot->id,
-            'name' => 'RAB Couple',
+            'name' => 'RAB Deret',
             'category' => 'Bangunan Rumah',
             'purpose' => 'pembangunan',
             'amount' => 75000000,
@@ -559,12 +565,137 @@ test('construction dashboard totals RAB and facility budgets for the selected pr
     $response = $this->actingAs($user)
         ->get(route('pembangunan.dashboard', ['property_id' => $property->id]));
 
-    $response->assertSee('Rp 9.846.000.000')
-        ->assertSee('Anggaran Fasum')
+    $response->assertSee('RAB')
+        ->assertSee('Total Pengeluaran')
+        ->assertSee('Deviasi')
+        ->assertSee('Pembangunan')
+        ->assertSee('Fasum')
+        ->assertSee('Total')
+        ->assertSee('Rp 9.846.000.000')
+        ->assertDontSee('estimasi')
         ->assertSee('Rp 200.000.000')
-        ->assertViewHas('totalBudget', fn (int|float|string $total): bool => (float) $total === 9846000000.0)
+        ->assertViewHas('constructionBudget', fn (int|float|string $total): bool => (float) $total === 9846000000.0)
         ->assertViewHas('totalFacilityBudget', fn (int|float|string $total): bool => (float) $total === 200000000.0)
+        ->assertViewHas('totalBudget', fn (int|float|string $total): bool => (float) $total === 10046000000.0)
         ->assertViewHas('totalBudgetDeviation', fn (int|float|string $total): bool => (float) $total === 10046000000.0);
+});
+
+test('construction dashboard separates construction and facility budgets and expenses before combining totals', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Ringkasan Keuangan']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $firstLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => 'A-01',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
+    $secondLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => 'A-02',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
+    $rabFacility = CommonFacility::create([
+        'property_id' => $property->id,
+        'name' => 'Taman',
+        'budget' => 900,
+    ]);
+    $legacyFacility = CommonFacility::create([
+        'property_id' => $property->id,
+        'name' => 'Pos Keamanan',
+        'budget' => 200,
+    ]);
+
+    Budget::create([
+        'property_id' => $property->id,
+        'lot_id' => $firstLot->id,
+        'name' => 'RAB Rumah A-01',
+        'category' => 'Bangunan Rumah',
+        'purpose' => 'pembangunan',
+        'amount' => 1000,
+    ]);
+    Budget::create([
+        'property_id' => $property->id,
+        'lot_id' => $secondLot->id,
+        'name' => 'RAB Rumah A-02',
+        'category' => 'Bangunan Rumah',
+        'purpose' => 'pembangunan',
+        'amount' => 300,
+    ]);
+    Budget::create([
+        'property_id' => $property->id,
+        'facility_id' => $rabFacility->id,
+        'name' => 'RAB Taman',
+        'category' => 'Lanskap',
+        'purpose' => 'pembangunan',
+        'amount' => 500,
+    ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'lot_id' => $firstLot->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-DASHBOARD-UNIT-1',
+        'transaction_date' => '2026-10-01',
+        'category' => 'Bangunan Rumah',
+        'amount' => 250,
+    ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'lot_id' => $secondLot->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-DASHBOARD-UNIT-2',
+        'transaction_date' => '2026-10-01',
+        'category' => 'Bangunan Rumah',
+        'amount' => 150,
+    ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'facility_id' => $rabFacility->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-DASHBOARD-FACILITY-1',
+        'transaction_date' => '2026-10-01',
+        'category' => 'Lanskap',
+        'amount' => 100,
+    ]);
+    ExpenseTransaction::create([
+        'property_id' => $property->id,
+        'facility_id' => $legacyFacility->id,
+        'division' => 'pembangunan',
+        'transaction_number' => 'EXP-DASHBOARD-FACILITY-2',
+        'transaction_date' => '2026-10-01',
+        'category' => 'Keamanan',
+        'amount' => 40,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->get(route('pembangunan.dashboard', ['property_id' => $property->id]));
+
+    $response->assertSee('Rp 1.300')
+        ->assertSee('Rp 400')
+        ->assertSee('Rp 900')
+        ->assertSee('Rp 700')
+        ->assertSee('Rp 140')
+        ->assertSee('Rp 560')
+        ->assertSee('Rp 2.000')
+        ->assertSee('Rp 540')
+        ->assertSee('Rp 1.460')
+        ->assertViewHas('constructionBudget', fn (int|float|string $total): bool => (float) $total === 1300.0)
+        ->assertViewHas('constructionExpense', fn (int|float|string $total): bool => (float) $total === 400.0)
+        ->assertViewHas('constructionDeviation', fn (int|float|string $total): bool => (float) $total === 900.0)
+        ->assertViewHas('totalFacilityBudget', fn (int|float|string $total): bool => (float) $total === 700.0)
+        ->assertViewHas('facilityExpense', fn (int|float|string $total): bool => (float) $total === 140.0)
+        ->assertViewHas('facilityDeviation', fn (int|float|string $total): bool => (float) $total === 560.0)
+        ->assertViewHas('totalBudget', fn (int|float|string $total): bool => (float) $total === 2000.0)
+        ->assertViewHas('totalExpense', fn (int|float|string $total): bool => (float) $total === 540.0)
+        ->assertViewHas('totalBudgetDeviation', fn (int|float|string $total): bool => (float) $total === 1460.0);
 });
 
 test('pembangunan staff no longer see the construction finance menu link', function () {
@@ -580,8 +711,9 @@ test('pembangunan staff no longer see the construction finance menu link', funct
     $this->actingAs($user)
         ->get(route('pembangunan.dashboard'))
         ->assertDontSee('href="'.route('finance.index').'"', false)
-        ->assertSee('Tahapan Pembangunan')
-        ->assertSee(route('pembangunan.property-construction-stages.index'), false);
+        ->assertSee('Progress Kavling')
+        ->assertSee(route('pembangunan.progress.index'), false)
+        ->assertDontSee('Tahapan Pembangunan');
 });
 
 test('document processing dashboard filters bookings by property and lot', function () {

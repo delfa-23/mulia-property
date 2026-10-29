@@ -56,7 +56,7 @@
                             </th>
 
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                Range Persentase
+                                Bobot
                             </th>
 
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -90,7 +90,7 @@
                                 </td>
 
                                 <td class="px-5 py-4 text-sm text-gray-600 dark:text-zinc-400">
-                                    {{ number_format((float) $stage->min_progress, 0) }}% - {{ number_format((float) $stage->max_progress, 0) }}%
+                                    {{ number_format((float) $stage->max_progress, 2) }}%
                                 </td>
 
                                 <td class="px-5 py-4 text-sm text-gray-600 dark:text-zinc-400">

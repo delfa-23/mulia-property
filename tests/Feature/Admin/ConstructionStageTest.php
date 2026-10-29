@@ -13,15 +13,13 @@ test('construction stage order must be unique when creating a stage', function (
     ConstructionStage::create([
         'name' => 'Tahap Lama',
         'order' => 1,
-        'min_progress' => 0,
-        'max_progress' => 100,
+        'max_progress' => 25,
     ]);
 
     $response = $this->actingAs($user)->post(route('admin.construction-stages.store'), [
         'name' => 'Tahap Baru',
         'order' => 1,
-        'min_progress' => 0,
-        'max_progress' => 100,
+        'max_progress' => 10,
     ]);
 
     $response->assertSessionHasErrors('order');
@@ -33,8 +31,7 @@ test('construction stage can keep its own order when updating', function () {
     $stage = ConstructionStage::create([
         'name' => 'Tahap Lama',
         'order' => 1,
-        'min_progress' => 0,
-        'max_progress' => 100,
+        'max_progress' => 25,
     ]);
 
     $response = $this->actingAs($user)->put(
@@ -42,7 +39,6 @@ test('construction stage can keep its own order when updating', function () {
         [
             'name' => $stage->name,
             'order' => 1,
-            'min_progress' => $stage->min_progress,
             'max_progress' => $stage->max_progress,
         ]
     );
@@ -51,45 +47,40 @@ test('construction stage can keep its own order when updating', function () {
     $response->assertSessionDoesntHaveErrors();
 });
 
-test('construction stage accepts a shared progress range', function () {
+test('construction stage stores its bobot in the existing percentage field', function () {
     $user = User::factory()->create(['role' => 'admin']);
     ConstructionStage::create([
         'name' => 'Tahap Pertama',
         'order' => 1,
-        'min_progress' => 1,
-        'max_progress' => 10,
+        'max_progress' => 8.25,
     ]);
 
     $response = $this->actingAs($user)->post(route('admin.construction-stages.store'), [
         'name' => 'Tahap Persentase Sama',
         'order' => 2,
-        'min_progress' => 1,
-        'max_progress' => 10,
+        'max_progress' => 8.25,
     ]);
 
     $response->assertRedirect(route('admin.construction-stages.index'));
     $response->assertSessionDoesntHaveErrors();
     $this->assertDatabaseHas('construction_stages', [
         'name' => 'Tahap Persentase Sama',
-        'min_progress' => 1,
-        'max_progress' => 10,
+        'max_progress' => '8.25',
     ]);
 });
 
-test('construction stage accepts an adjacent progress range', function () {
+test('construction stages can use different bobot values', function () {
     $user = User::factory()->create(['role' => 'admin']);
     ConstructionStage::create([
         'name' => 'Tahap Pertama',
         'order' => 1,
-        'min_progress' => 1,
-        'max_progress' => 10,
+        'max_progress' => 0,
     ]);
 
     $response = $this->actingAs($user)->post(route('admin.construction-stages.store'), [
         'name' => 'Tahap Berikutnya',
         'order' => 2,
-        'min_progress' => 11,
-        'max_progress' => 20,
+        'max_progress' => 3.5,
     ]);
 
     $response->assertRedirect(route('admin.construction-stages.index'));
@@ -110,8 +101,7 @@ test('construction stage can be deleted while preserving linked lot progress and
     $stage = ConstructionStage::create([
         'name' => 'Pondasi',
         'order' => 1,
-        'min_progress' => 0,
-        'max_progress' => 100,
+        'max_progress' => 10,
     ]);
     $progress = ConstructionProgress::create([
         'lot_id' => $lot->id,

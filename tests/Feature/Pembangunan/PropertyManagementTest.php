@@ -217,7 +217,7 @@ test('admin saves house prices entered with Indonesian separators', function (st
     'currency-prefixed grouped amount' => 'Rp 4.000.000.000',
 ]);
 
-test('admin can add construction stages scoped to each property', function () {
+test('admin can add construction stages using the existing percentage as bobot per property', function () {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Tahap Satu']);
     $otherProperty = Property::create(['name' => 'Perumahan Tahap Dua']);
@@ -226,8 +226,7 @@ test('admin can add construction stages scoped to each property', function () {
         ->post(route('admin.property-construction-stages.store', $property), [
             'name' => 'Pondasi Tahap Satu',
             'order' => 1,
-            'min_progress' => 1,
-            'max_progress' => 20,
+            'max_progress' => 4,
             'description' => 'Pekerjaan pondasi',
         ])
         ->assertRedirect()
@@ -235,8 +234,7 @@ test('admin can add construction stages scoped to each property', function () {
     $this->post(route('admin.property-construction-stages.store', $otherProperty), [
         'name' => 'Pondasi Tahap Dua',
         'order' => 1,
-        'min_progress' => 1,
-        'max_progress' => 20,
+        'max_progress' => 4,
     ])->assertRedirect()->assertSessionHas('success');
 
     $stage = $property->constructionStages()->firstOrFail();
@@ -245,27 +243,24 @@ test('admin can add construction stages scoped to each property', function () {
         'id' => $stage->id,
         'property_id' => $property->id,
         'name' => 'Pondasi Tahap Satu',
-        'min_progress' => 1,
-        'max_progress' => 20,
+        'max_progress' => '4.00',
     ]);
 });
 
-test('admin can use the same progress range for multiple property stages', function () {
+test('admin can use the existing percentage as bobot for separate property stages', function () {
     $user = createPropertyManagementUser();
     $property = Property::create(['name' => 'Perumahan Range']);
     $property->constructionStages()->create([
         'name' => 'Pekerjaan Awal',
         'order' => 1,
-        'min_progress' => 1,
-        'max_progress' => 20,
+        'max_progress' => 25,
     ]);
 
     $this->actingAs($user)
         ->post(route('admin.property-construction-stages.store', $property), [
             'name' => 'Pekerjaan Berikutnya',
             'order' => 2,
-            'min_progress' => 1,
-            'max_progress' => 20,
+            'max_progress' => 25,
         ])
         ->assertRedirect()
         ->assertSessionHas('success');
@@ -273,8 +268,7 @@ test('admin can use the same progress range for multiple property stages', funct
     $this->assertDatabaseHas('construction_stages', [
         'property_id' => $property->id,
         'name' => 'Pekerjaan Berikutnya',
-        'min_progress' => 1,
-        'max_progress' => 20,
+        'max_progress' => '25.00',
     ]);
 });
 
@@ -284,8 +278,7 @@ test('admin can edit a property construction stage', function () {
     $stage = $property->constructionStages()->create([
         'name' => 'Pekerjaan Awal',
         'order' => 1,
-        'min_progress' => 1,
-        'max_progress' => 20,
+        'max_progress' => 4,
         'description' => 'Sebelum perubahan',
     ]);
 
@@ -297,8 +290,7 @@ test('admin can edit a property construction stage', function () {
     $this->put(route('admin.property-construction-stages.update', [$property, $stage]), [
         'name' => 'Pekerjaan Struktur',
         'order' => 2,
-        'min_progress' => 1,
-        'max_progress' => 20,
+        'max_progress' => 6.25,
         'description' => 'Tahap struktur',
     ])
         ->assertRedirect()
@@ -309,13 +301,12 @@ test('admin can edit a property construction stage', function () {
         'property_id' => $property->id,
         'name' => 'Pekerjaan Struktur',
         'order' => 2,
-        'min_progress' => 1,
-        'max_progress' => 20,
+        'max_progress' => '6.25',
         'description' => 'Tahap struktur',
     ]);
 });
 
-test('construction staff can manage property construction stages from their sidebar page', function () {
+test('construction staff can fill progress but cannot manage construction stages', function () {
     $division = Division::firstOrCreate(
         ['slug' => 'pembangunan'],
         ['name' => 'Pembangunan', 'is_active' => true]
@@ -328,30 +319,30 @@ test('construction staff can manage property construction stages from their side
     $stage = $property->constructionStages()->create([
         'name' => 'Pekerjaan Pondasi',
         'order' => 1,
-        'min_progress' => 0,
         'max_progress' => 30,
     ]);
 
     $this->actingAs($user)
-        ->get(route('pembangunan.property-construction-stages.index'))
-        ->assertSee('Tahapan Pembangunan')
-        ->assertSee('Perumahan Tim Pembangunan')
-        ->assertSee(route('pembangunan.property-construction-stages.update', [$property, $stage]), false)
-        ->assertSee(route('pembangunan.property-construction-stages.store', $property), false);
-
-    $this->put(route('pembangunan.property-construction-stages.update', [$property, $stage]), [
+        ->get(route('pembangunan.progress.index'))
+        ->assertOk();
+    $this->get(route('admin.property-construction-stages.index'))->assertForbidden();
+    $this->post(route('admin.property-construction-stages.store', $property), [
+        'name' => 'Pondasi Baru',
+        'order' => 2,
+        'max_progress' => 10,
+    ])->assertForbidden();
+    $this->put(route('admin.property-construction-stages.update', [$property, $stage]), [
         'name' => 'Pondasi Selesai',
         'order' => 1,
-        'min_progress' => 0,
         'max_progress' => 30,
-    ])
-        ->assertRedirect()
-        ->assertSessionHas('success');
+    ])->assertForbidden();
+    $this->delete(route('admin.property-construction-stages.destroy', [$property, $stage]))
+        ->assertForbidden();
 
     $this->assertDatabaseHas('construction_stages', [
         'id' => $stage->id,
         'property_id' => $property->id,
-        'name' => 'Pondasi Selesai',
+        'name' => 'Pekerjaan Pondasi',
     ]);
 });
 

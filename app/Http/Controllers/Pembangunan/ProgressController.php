@@ -14,7 +14,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ProgressController extends Controller
@@ -170,6 +169,7 @@ class ProgressController extends Controller
         ConstructionProgress $constructionProgress,
         ActivityLogger $activityLogger,
     ): RedirectResponse {
+        abort_unless($request->user()->isAdmin(), 403);
         $this->assertLotScope($property, $block, $lot);
         abort_unless($constructionProgress->lot_id === $lot->id, 404);
 
@@ -200,6 +200,7 @@ class ProgressController extends Controller
     private function validatedProgress(Request $request, Property $property): array
     {
         $propertyHasStages = $property->constructionStages()->exists();
+        $isAdmin = $request->user()->isAdmin();
         $validated = $request->validate([
             'stage_id' => [
                 'required',
@@ -211,22 +212,11 @@ class ProgressController extends Controller
                 ),
             ],
             'progress' => ['required', 'numeric', 'min:0', 'max:100'],
-            'realization' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
-            'notes' => ['nullable', 'string'],
+            'realization' => $isAdmin
+                ? ['required', 'numeric', 'decimal:0,2', 'min:0']
+                : ['prohibited'],
+            'notes' => $isAdmin ? ['nullable', 'string'] : ['prohibited'],
         ]);
-
-        $stage = ConstructionStage::findOrFail($validated['stage_id']);
-
-        if ($validated['progress'] < $stage->min_progress || $validated['progress'] > $stage->max_progress) {
-            throw ValidationException::withMessages([
-                'progress' => sprintf(
-                    'Progress tahap %s harus berada di antara %s%% sampai %s%%.',
-                    $stage->name,
-                    $stage->min_progress,
-                    $stage->max_progress
-                ),
-            ]);
-        }
 
         return $validated;
     }
@@ -242,12 +232,19 @@ class ProgressController extends Controller
             $progress = $existingProgress ?? $lot->constructionProgresses()->make([
                 'stage_id' => $validated['stage_id'],
             ]);
-            $progress->fill([
+            $attributes = [
                 'progress' => $validated['progress'],
-                'realization' => $validated['realization'],
                 'updated_by' => $request->user()->id,
-                'notes' => $validated['notes'] ?? null,
-            ])->save();
+            ];
+
+            if ($request->user()->isAdmin()) {
+                $attributes['realization'] = $validated['realization'];
+                $attributes['notes'] = $validated['notes'] ?? null;
+            } elseif ($existingProgress === null) {
+                $attributes['realization'] = 0;
+            }
+
+            $progress->fill($attributes)->save();
 
             ConstructionProgressHistory::create([
                 'construction_progress_id' => $progress->id,

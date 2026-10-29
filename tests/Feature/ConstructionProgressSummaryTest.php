@@ -8,7 +8,7 @@ use App\Models\Lot;
 use App\Models\Property;
 use App\Models\User;
 
-test('construction progress pages and dashboard summarize the highest stage progress per lot', function () {
+test('construction progress pages and dashboard summarize stage progress by bobot', function () {
     $division = Division::create([
         'name' => 'Pembangunan',
         'slug' => 'pembangunan',
@@ -34,6 +34,12 @@ test('construction progress pages and dashboard summarize the highest stage prog
         'house_price' => 500000000,
         'status' => 'available',
     ]);
+    Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '04',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
     $otherLot = Lot::create([
         'block_id' => $otherBlock->id,
         'lot_number' => '03',
@@ -41,10 +47,10 @@ test('construction progress pages and dashboard summarize the highest stage prog
         'status' => 'available',
     ]);
     $stages = collect([
-        ['name' => 'Tahap 1', 'min_progress' => 1, 'max_progress' => 20],
-        ['name' => 'Tahap 2', 'min_progress' => 21, 'max_progress' => 50],
-        ['name' => 'Tahap 3', 'min_progress' => 1, 'max_progress' => 10],
-        ['name' => 'Tahap 4', 'min_progress' => 51, 'max_progress' => 100],
+        ['name' => 'Tahap 1', 'max_progress' => 20],
+        ['name' => 'Tahap 2', 'max_progress' => 40],
+        ['name' => 'Tahap 3', 'max_progress' => 30],
+        ['name' => 'Tahap 4', 'max_progress' => 10],
     ])->map(fn (array $attributes, int $order): ConstructionStage => ConstructionStage::create([
         ...$attributes,
         'order' => $order + 1,
@@ -99,13 +105,14 @@ test('construction progress pages and dashboard summarize the highest stage prog
         'property_id' => $property->id,
     ]));
 
-    $listResponse->assertSee('45.00%')
-        ->assertSee('8.00%')
+    $listResponse->assertSee('20.40%')
+        ->assertSee('2.40%')
         ->assertDontSee('99.00%');
-    $detailResponse->assertSee('45.00%');
-    $secondDetailResponse->assertSee('8.00%')
+    $detailResponse->assertSee('20.40%')
+        ->assertSee('18.00%');
+    $secondDetailResponse->assertSee('2.40%')
         ->assertDontSee('12.00%');
-    $dashboardResponse->assertViewHas('stats', fn (array $stats): bool => $stats['physical_progress'] === 26.5)
+    $dashboardResponse->assertViewHas('stats', fn (array $stats): bool => $stats['physical_progress'] === 7.6)
         ->assertViewHas('latestProgressUpdates', fn ($updates): bool => ! $updates->contains('id', $orphanedProgress->id)
             && $updates->every(fn (ConstructionProgress $progress): bool => $progress->stage_id !== null));
 });

@@ -45,20 +45,7 @@ class ConstructionStageController extends Controller
                 'min:0',
                 Rule::unique('construction_stages', 'order')->whereNull('property_id'),
             ],
-            'min_progress' => [
-                'required',
-                'numeric',
-                'min:0',
-                'max:100',
-                'lte:max_progress',
-            ],
-            'max_progress' => [
-                'required',
-                'numeric',
-                'min:0',
-                'max:100',
-                'gte:min_progress',
-            ],
+            'max_progress' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:100'],
             'description' => [
                 'nullable',
                 'string',
@@ -101,20 +88,7 @@ class ConstructionStageController extends Controller
                     ->ignore($constructionStage)
                     ->where('property_id', $constructionStage->property_id),
             ],
-            'min_progress' => [
-                'required',
-                'numeric',
-                'min:0',
-                'max:100',
-                'lte:max_progress',
-            ],
-            'max_progress' => [
-                'required',
-                'numeric',
-                'min:0',
-                'max:100',
-                'gte:min_progress',
-            ],
+            'max_progress' => ['required', 'numeric', 'decimal:0,2', 'min:0', 'max:100'],
             'description' => [
                 'nullable',
                 'string',

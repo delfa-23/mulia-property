@@ -92,12 +92,12 @@ class DashboardController extends Controller
         $budgetStats = $filterFinancialRecords(Budget::query());
         $incomeStats = $filterFinancialRecords(IncomeTransaction::query());
         $expenseStats = $filterFinancialRecords(ExpenseTransaction::query());
-        $physicalProgressByLot = ConstructionProgress::query()
-            ->whereNotNull('stage_id')
-            ->when($propertyId, $filterLotRelations)
-            ->select('lot_id')
-            ->selectRaw('MAX(progress) as physical_progress')
-            ->groupBy('lot_id')
+        $physicalProgressByLot = (clone $lotStats)
+            ->leftJoin('construction_progress', 'construction_progress.lot_id', '=', 'lots.id')
+            ->leftJoin('construction_stages', 'construction_stages.id', '=', 'construction_progress.stage_id')
+            ->select('lots.id')
+            ->selectRaw('COALESCE(SUM(construction_progress.progress * construction_stages.max_progress / 100), 0) as physical_progress')
+            ->groupBy('lots.id')
             ->get();
 
         $stats = [

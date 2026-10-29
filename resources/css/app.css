@@ -34,6 +34,10 @@
 }
 
 @layer base {
+    [x-cloak] {
+        display: none !important;
+    }
+
     html {
         color-scheme: light;
     }
@@ -153,10 +157,6 @@
 }
 
 .app-main :is(.bg-gray-50, .bg-zinc-50, .bg-gray-100, .bg-zinc-100) {
-    background-color: #f1f5f9;
-}
-
-.app-main :is([class~='dark:hover:bg-zinc-800']):hover {
     background-color: #f1f5f9;
 }
 

@@ -8,7 +8,7 @@
             </div>
             <nav class="flex flex-wrap gap-2">
                 <a href="{{ auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.progress.index') }}" wire:navigate class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200" style="background-color: #ffffff; color: #0f172a;">
-                    Tahapan Pembangunan
+                    {{ auth()->user()->role === 'admin' ? 'Tahapan Pembangunan' : 'Progress Kavling' }}
                 </a>
                 <a href="{{ auth()->user()->role === 'admin' ? route('admin.common-facilities.index') : route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800" style="border-color: #64748b; color: #ffffff;">
                     Fasilitas Umum
@@ -43,33 +43,45 @@
             </div>
         </form>
 
-        <section aria-labelledby="construction-finance-heading" class="overflow-hidden rounded-2xl bg-slate-900 text-white shadow-sm" style="background-color: #0f172a; color: #ffffff;">
-            <div class="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 px-5 py-4 sm:px-6">
+        <section aria-labelledby="construction-finance-heading" class="overflow-hidden rounded-2xl border border-orange-600/30 bg-orange-600 text-white shadow-sm">
+            <div class="flex flex-wrap items-end justify-between gap-3 border-b border-white/15 bg-orange-600 px-5 py-4 sm:px-6">
                 <div>
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-orange-300" style="color: #fdba74;">Keuangan Pembangunan</p>
-                    <h2 id="construction-finance-heading" class="mt-1 text-lg font-bold !text-white" style="color: #ffffff;">Ringkasan Anggaran</h2>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-orange-100">Keuangan Pembangunan</p>
+                    <h2 id="construction-finance-heading" class="mt-1 text-lg font-bold !text-white opacity-100" style="color: #ffffff !important; opacity: 1; -webkit-text-fill-color: #ffffff;">Ringkasan Anggaran</h2>
                 </div>
-                <span class="text-sm text-slate-300" style="color: #cbd5e1;">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
+                <span class="text-sm text-orange-50">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
             </div>
-            <div class="grid divide-y divide-white/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
-                <div class="px-5 py-5 sm:px-6">
-                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">RAB Pembangunan</p>
-                    <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalBudget, 0, ',', '.') }}</p>
-                </div>
-                <div class="px-5 py-5 sm:px-6">
-                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">Anggaran Fasum</p>
-                    <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalFacilityBudget, 0, ',', '.') }}</p>
-                </div>
-                <div class="px-5 py-5 sm:px-6">
-                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">Total Pengeluaran</p>
-                    <p class="mt-2 text-2xl font-bold tracking-tight">Rp {{ number_format((float) $totalExpense, 0, ',', '.') }}</p>
-                </div>
-                <div class="px-5 py-5 sm:px-6">
-                    <p class="text-sm font-medium text-slate-300" style="color: #cbd5e1;">Deviasi Anggaran <span class="font-normal text-slate-400" style="color: #94a3b8;">(RAB + fasum - pengeluaran)</span></p>
-                    <p class="mt-2 text-2xl font-bold tracking-tight {{ $totalBudgetDeviation >= 0 ? 'text-emerald-300' : 'text-red-300' }}" style="color: {{ $totalBudgetDeviation >= 0 ? '#6ee7b7' : '#fca5a5' }};">
-                        Rp {{ number_format((float) $totalBudgetDeviation, 0, ',', '.') }}
-                    </p>
-                </div>
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[640px] text-left">
+                    <thead class="border-b border-orange-500 bg-orange-700/20 text-xs font-semibold uppercase tracking-wide text-orange-50">
+                        <tr>
+                            <th scope="col" class="px-5 py-3 sm:px-6">Jenis</th>
+                            <th scope="col" class="px-5 py-3 text-right sm:px-6">RAB</th>
+                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Total Pengeluaran</th>
+                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Deviasi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 bg-white text-slate-900">
+                        <tr>
+                            <th scope="row" class="px-5 py-4 font-semibold text-slate-900 sm:px-6">Pembangunan</th>
+                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionExpense, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right font-semibold text-slate-900">Rp {{ number_format((float) $constructionDeviation, 0, ',', '.') }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="px-5 py-4 font-semibold text-slate-900 sm:px-6">Fasum</th>
+                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $totalFacilityBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $facilityExpense, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right font-semibold text-slate-900">Rp {{ number_format((float) $facilityDeviation, 0, ',', '.') }}</td>
+                        </tr>
+                        <tr class="bg-white font-bold">
+                            <th scope="row" class="px-5 py-4 text-slate-900 sm:px-6">Total</th>
+                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $totalBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $totalExpense, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold text-slate-900">Rp {{ number_format((float) $totalBudgetDeviation, 0, ',', '.') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </section>
 

@@ -84,14 +84,16 @@
                             </flux:sidebar.item>
                         @endif
 
-                        <flux:sidebar.item
-                            icon="building-office"
-                            :href="auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.property-construction-stages.index')"
-                            :current="request()->routeIs('admin.property-construction-stages.*', 'pembangunan.property-construction-stages.*')"
-                            wire:navigate
-                        >
-                            Tahapan Pembangunan
-                        </flux:sidebar.item>
+                        @if(auth()->user()->role === 'admin')
+                            <flux:sidebar.item
+                                icon="building-office"
+                                :href="route('admin.property-construction-stages.index')"
+                                :current="request()->routeIs('admin.property-construction-stages.*')"
+                                wire:navigate
+                            >
+                                Tahapan Pembangunan
+                            </flux:sidebar.item>
+                        @endif
 
                         @if(auth()->user()->role === 'admin')
                             <flux:sidebar.item

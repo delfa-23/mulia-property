@@ -127,7 +127,7 @@ class DashboardController extends Controller
                     $progress = $progressByStage->get($stage->id);
 
                     return $progress !== null
-                        && (float) $progress->progress >= (float) $stage->max_progress;
+                        && (float) $progress->progress >= 100;
                 });
             $booking = $lot->bookings->first();
 
@@ -146,13 +146,8 @@ class DashboardController extends Controller
             return [$lot->id => $status];
         });
         $lotStatusCounts = $statusByLot->countBy();
-        $physicalProgressByLot = ConstructionProgress::query()
-            ->whereNotNull('stage_id')
-            ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
-            ->select('lot_id')
-            ->selectRaw('MAX(progress) as physical_progress')
-            ->groupBy('lot_id')
-            ->get();
+        $physicalProgressByLot = $dashboardLots
+            ->map(fn (Lot $lot): float => $lot->constructionProgressPercentage());
 
         $stats = [
             'total_properties' => Property::query()->when($propertyId, fn ($query) => $query->whereKey($propertyId))->count(),
@@ -162,7 +157,7 @@ class DashboardController extends Controller
                 ->count(),
             'total_lots' => $dashboardLots->count(),
 
-            'physical_progress' => round((float) $physicalProgressByLot->avg('physical_progress'), 2),
+            'physical_progress' => round((float) $physicalProgressByLot->avg(), 2),
         ];
 
         foreach (['available', 'booked', 'process', 'sp3', 'akad', 'finish', 'cancelled'] as $status) {
@@ -183,18 +178,37 @@ class DashboardController extends Controller
                         ->whereNull('lot_id')
                         ->whereNull('facility_id'));
             }));
-        $totalBudget = Budget::query()
+        $constructionBudget = Budget::query()
             ->where('purpose', 'pembangunan')
+            ->whereNull('facility_id')
             ->tap($filterFinancialRecords)
             ->sum('amount');
-        $totalFacilityBudget = CommonFacility::query()
-            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-            ->sum('budget');
-        $totalExpense = ExpenseTransaction::query()
+        $constructionExpense = ExpenseTransaction::query()
             ->where('division', 'pembangunan')
+            ->whereNull('facility_id')
             ->tap($filterFinancialRecords)
             ->sum('amount');
-        $totalBudgetDeviation = (float) $totalBudget + (float) $totalFacilityBudget - (float) $totalExpense;
+        $facilityBudgets = CommonFacility::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->withSum([
+                'budgets as pembangunan_budget_total' => fn ($query) => $query->where('purpose', 'pembangunan'),
+            ], 'amount')
+            ->get();
+        $totalFacilityBudget = $facilityBudgets->sum(
+            fn (CommonFacility $facility): float => (float) $facility->pembangunan_budget_total > 0
+                ? (float) $facility->pembangunan_budget_total
+                : (float) $facility->budget
+        );
+        $facilityExpense = ExpenseTransaction::query()
+            ->where('division', 'pembangunan')
+            ->whereNotNull('facility_id')
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->sum('amount');
+        $constructionDeviation = (float) $constructionBudget - (float) $constructionExpense;
+        $facilityDeviation = (float) $totalFacilityBudget - (float) $facilityExpense;
+        $totalBudget = (float) $constructionBudget + (float) $totalFacilityBudget;
+        $totalExpense = (float) $constructionExpense + (float) $facilityExpense;
+        $totalBudgetDeviation = $totalBudget - $totalExpense;
         $stageProgress = ConstructionProgress::query()
             ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
             ->select('stage_id')
@@ -266,8 +280,13 @@ class DashboardController extends Controller
                 'lotId',
                 'lotStatusChart',
                 'lotStatusTotal',
+                'constructionBudget',
+                'constructionExpense',
+                'constructionDeviation',
                 'totalBudget',
                 'totalFacilityBudget',
+                'facilityExpense',
+                'facilityDeviation',
                 'totalExpense',
                 'totalBudgetDeviation',
                 'stageProgress',

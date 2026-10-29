@@ -94,6 +94,13 @@ class Lot extends Model
         return $this->hasMany(ConstructionProgress::class);
     }
 
+    public function constructionProgressPercentage(): float
+    {
+        return (float) $this->constructionProgresses
+            ->whereNotNull('stage_id')
+            ->sum(fn (ConstructionProgress $progress): float => $progress->weightedProgressPercentage());
+    }
+
     public function pemberkasanDocuments(): HasMany
     {
         return $this->hasMany(PemberkasanDocument::class);

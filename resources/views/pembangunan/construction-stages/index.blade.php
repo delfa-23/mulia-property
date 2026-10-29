@@ -1,10 +1,9 @@
 <x-layouts::app :title="__('Tahapan Pembangunan')">
-    @php($stageRoutePrefix = auth()->user()->role === 'admin' ? 'admin' : 'pembangunan')
     <div class="space-y-6">
         <div>
             <h1 class="text-2xl font-semibold text-zinc-900 dark:text-white">Tahapan Pembangunan</h1>
             <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Atur tahapan dan rentang progress untuk setiap perumahan. Persentase antar tahapan boleh sama.
+                Atur bobot untuk tiap tahapan menggunakan persentase tahap yang sudah tercatat.
             </p>
         </div>
 
@@ -32,6 +31,10 @@
                         <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                             {{ $property->constructionStages->count() }} tahapan
                         </p>
+                        @php($totalStageWeight = (float) $property->constructionStages->sum('max_progress'))
+                        <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                            Total bobot: {{ number_format($totalStageWeight, 2) }}%
+                        </p>
                     </header>
 
                     <div class="space-y-3 p-5">
@@ -43,7 +46,7 @@
                                             {{ $stage->order }}. {{ $stage->name }}
                                         </p>
                                         <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                                            {{ $stage->min_progress }}%-{{ $stage->max_progress }}%
+                                            Bobot {{ number_format((float) $stage->max_progress, 2) }}%
                                             @if($stage->description)
                                                 · {{ $stage->description }}
                                             @endif
@@ -51,7 +54,7 @@
                                     </div>
                                     <form
                                         method="POST"
-                                        action="{{ route($stageRoutePrefix.'.property-construction-stages.destroy', [$property, $stage]) }}"
+                                        action="{{ route('admin.property-construction-stages.destroy', [$property, $stage]) }}"
                                         onsubmit="return confirm('Hapus tahapan ini beserta progress kavling terkait?')"
                                     >
                                         @csrf
@@ -62,13 +65,13 @@
                                     </form>
                                 </div>
                                 <details class="mt-3">
-                                    <summary class="inline-flex cursor-pointer list-none rounded-lg border border-orange-200 px-3 py-2 text-xs font-medium text-orange-700 hover:bg-orange-50 dark:border-orange-900 dark:text-orange-300 dark:hover:bg-orange-900/20">
+                                    <summary class="inline-flex cursor-pointer list-none rounded-lg border border-green-200 px-3 py-2 text-xs font-medium text-green-800 hover:bg-green-50 dark:border-green-900 dark:text-green-300 dark:hover:bg-green-900/20">
                                         Edit Tahapan
                                     </summary>
                                     <form
                                         method="POST"
-                                        action="{{ route($stageRoutePrefix.'.property-construction-stages.update', [$property, $stage]) }}"
-                                        class="mt-3 grid gap-3 rounded-lg bg-zinc-50 p-4 sm:grid-cols-2 dark:bg-zinc-800"
+                                        action="{{ route('admin.property-construction-stages.update', [$property, $stage]) }}"
+                                        class="mt-3 grid gap-3 rounded-lg bg-green-50/70 p-4 sm:grid-cols-2 dark:bg-zinc-800"
                                     >
                                         @csrf
                                         @method('PUT')
@@ -81,12 +84,8 @@
                                             <input id="edit-stage-order-{{ $stage->id }}" type="number" name="order" required min="1" value="{{ $stage->order }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
                                         </div>
                                         <div>
-                                            <label for="edit-stage-min-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Progress minimum (%)</label>
-                                            <input id="edit-stage-min-{{ $stage->id }}" type="number" name="min_progress" required min="0" max="100" step="0.01" value="{{ $stage->min_progress }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
-                                        </div>
-                                        <div>
-                                            <label for="edit-stage-max-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Progress maksimum (%)</label>
-                                            <input id="edit-stage-max-{{ $stage->id }}" type="number" name="max_progress" required min="0" max="100" step="0.01" value="{{ $stage->max_progress }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
+                                            <label for="edit-stage-weight-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Bobot (%)</label>
+                                            <input id="edit-stage-weight-{{ $stage->id }}" type="number" name="max_progress" required min="0" max="100" step="0.01" value="{{ $stage->max_progress }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
                                         </div>
                                         <div class="sm:col-span-2">
                                             <label for="edit-stage-description-{{ $stage->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Deskripsi (opsional)</label>
@@ -106,8 +105,8 @@
 
                         <form
                             method="POST"
-                            action="{{ route($stageRoutePrefix.'.property-construction-stages.store', $property) }}"
-                            class="grid gap-3 rounded-lg bg-zinc-50 p-4 sm:grid-cols-2 dark:bg-zinc-800"
+                            action="{{ route('admin.property-construction-stages.store', $property) }}"
+                            class="grid gap-3 rounded-lg bg-green-50/70 p-4 sm:grid-cols-2 dark:bg-zinc-800"
                         >
                             @csrf
                             <h3 class="text-sm font-semibold text-zinc-900 sm:col-span-2 dark:text-white">
@@ -122,12 +121,8 @@
                                 <input id="stage-order-{{ $property->id }}" type="number" name="order" required min="1" value="{{ $property->constructionStages->max('order') + 1 }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
                             </div>
                             <div>
-                                <label for="stage-min-{{ $property->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Progress minimum (%)</label>
-                                <input id="stage-min-{{ $property->id }}" type="number" name="min_progress" required min="0" max="100" step="0.01" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
-                            </div>
-                            <div>
-                                <label for="stage-max-{{ $property->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Progress maksimum (%)</label>
-                                <input id="stage-max-{{ $property->id }}" type="number" name="max_progress" required min="0" max="100" step="0.01" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
+                                <label for="stage-weight-{{ $property->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Bobot (%)</label>
+                                <input id="stage-weight-{{ $property->id }}" type="number" name="max_progress" required min="0" max="100" step="0.01" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white">
                             </div>
                             <div class="sm:col-span-2">
                                 <label for="stage-description-{{ $property->id }}" class="mb-1.5 block text-xs font-medium text-zinc-700 dark:text-zinc-300">Deskripsi (opsional)</label>
