@@ -114,7 +114,7 @@
                             Tersedia
                         </option>
                         <option value="blocked" @selected(old('status') === 'blocked')>
-                            Blocked
+                            Belum Boleh Dijual
                         </option>
                         <option value="booked" @selected(old('status') === 'booked')>
                             Booking
@@ -124,12 +124,6 @@
                         </option>
                         <option value="akad" @selected(old('status') === 'akad')>
                             Akad
-                        </option>
-                        <option value="finish" @selected(old('status') === 'finish')>
-                            Finish
-                        </option>
-                        <option value="cancelled" @selected(old('status') === 'cancelled')>
-                            Dibatalkan
                         </option>
                     </select>
 

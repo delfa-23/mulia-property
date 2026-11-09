@@ -40,13 +40,7 @@ class MarketingLeadCalendarController extends Controller
                 ->with(['lead:id,name,assigned_user_id', 'assignedUser:id,name', 'property:id,name'])
                 ->whereBetween('scheduled_at', [$calendarStart, $calendarEnd])
                 ->whereHas('lead', fn ($query) => $query->whereNull('archived_at'))
-                ->where(function ($query) use ($leadScope, $access, $user): void {
-                    $query->whereHas('lead', $leadScope);
-
-                    if (! $access->canManageTeam($user)) {
-                        $query->orWhere('assigned_user_id', $user->id);
-                    }
-                })
+                ->whereHas('lead', $leadScope)
                 ->when($marketingId, fn ($query) => $query->where('assigned_user_id', $marketingId))
                 ->when(isset($filters['status']), fn ($query) => $query->where('status', $filters['status']))
                 ->get();
@@ -69,13 +63,7 @@ class MarketingLeadCalendarController extends Controller
                 ->with(['lead:id,name,assigned_user_id', 'assignedUser:id,name'])
                 ->whereBetween('due_at', [$calendarStart, $calendarEnd])
                 ->whereHas('lead', fn ($query) => $query->whereNull('archived_at'))
-                ->where(function ($query) use ($leadScope, $access, $user): void {
-                    $query->whereHas('lead', $leadScope);
-
-                    if (! $access->canManageTeam($user)) {
-                        $query->orWhere('assigned_user_id', $user->id);
-                    }
-                })
+                ->whereHas('lead', $leadScope)
                 ->when($marketingId, fn ($query) => $query->where('assigned_user_id', $marketingId))
                 ->when(isset($filters['status']), fn ($query) => $query->where('status', $filters['status']))
                 ->get();

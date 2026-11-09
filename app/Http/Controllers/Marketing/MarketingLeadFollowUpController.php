@@ -27,26 +27,14 @@ class MarketingLeadFollowUpController extends Controller
 
         $bucket = $filters['bucket'] ?? 'today';
         $query = MarketingLeadFollowUp::query()
-            ->whereHas('lead', fn (Builder $query): Builder => $query->whereNull('archived_at'))
-            ->where(function (Builder $query) use ($access, $request): void {
-                $query->whereHas('lead', fn (Builder $leadQuery): Builder => $access->scopeLeads(
-                    $leadQuery,
-                    $request->user(),
-                ));
-
-                if (! $access->canManageTeam($request->user())) {
-                    $query->orWhere('assigned_user_id', $request->user()->id);
-                }
-            })
+            ->whereHas('lead', fn (Builder $query): Builder => $access->scopeLeads(
+                $query->whereNull('archived_at'),
+                $request->user(),
+            ))
             ->with(['lead:id,name,phone', 'assignedUser:id,name', 'histories.changedBy:id,name']);
 
         if ($access->canManageTeam($request->user()) && isset($filters['assigned_user_id'])) {
             $query->where('assigned_user_id', $filters['assigned_user_id']);
-        } elseif (! $access->canManageTeam($request->user())) {
-            $query->where(function (Builder $query) use ($request): void {
-                $query->where('assigned_user_id', $request->user()->id)
-                    ->orWhereNull('assigned_user_id');
-            });
         }
 
         match ($bucket) {

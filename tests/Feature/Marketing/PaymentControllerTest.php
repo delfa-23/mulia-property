@@ -10,6 +10,30 @@ use App\Models\Lot;
 use App\Models\Property;
 use App\Models\User;
 
+it('saves an unpaid payment reason for a booking with payments', function () {
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $booking = makePaymentControllerTestBooking($user);
+
+    $this->actingAs($user)
+        ->put(route('marketing.payments.unpaid-reason.update', $booking), [
+            'unpaid_payment_reason' => 'Customer menunggu pencairan dana untuk melunasi sisa pembayaran.',
+        ])
+        ->assertRedirect();
+
+    $this->assertDatabaseHas('bookings', [
+        'id' => $booking->id,
+        'unpaid_payment_reason' => 'Customer menunggu pencairan dana untuk melunasi sisa pembayaran.',
+    ]);
+});
+
 it('shows filtered booking payment details and a Midtrans checkout for the next stage', function () {
     $marketingDivision = Division::create([
         'name' => 'Marketing',
@@ -31,6 +55,7 @@ it('shows filtered booking payment details and a Midtrans checkout for the next 
     $booking = Booking::create([
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-10',
         'house_price_snapshot' => 120000000,
         'akad_fee' => 2500000,
@@ -45,6 +70,7 @@ it('shows filtered booking payment details and a Midtrans checkout for the next 
     Booking::create([
         'lot_id' => $searchFilteredLot->id,
         'customer_id' => $otherCustomer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-09',
         'house_price_snapshot' => 120000000,
         'akad_fee' => 2500000,
@@ -58,6 +84,7 @@ it('shows filtered booking payment details and a Midtrans checkout for the next 
     Booking::create([
         'lot_id' => $statusFilteredLot->id,
         'customer_id' => $customer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-08',
         'house_price_snapshot' => 120000000,
         'akad_fee' => 2500000,
@@ -73,6 +100,7 @@ it('shows filtered booking payment details and a Midtrans checkout for the next 
     Booking::create([
         'lot_id' => $propertyFilteredLot->id,
         'customer_id' => $customer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-07',
         'house_price_snapshot' => 120000000,
         'akad_fee' => 2500000,
@@ -91,13 +119,14 @@ it('shows filtered booking payment details and a Midtrans checkout for the next 
         ->assertSee('Customer Pembayaran')
         ->assertSee('Perumahan Pembayaran')
         ->assertSee('Rp 120.000.000')
-        ->assertSee('Virtual Account, QRIS, atau e-wallet')
+        ->assertSee('Virtual Account, QRIS, e-wallet')
+        ->assertSee('Pembayaran Rumah (DP)')
+        ->assertSee('Biaya Akad')
         ->assertSee('B/08')
         ->assertSee(route('marketing.bookings.payments.midtrans.store', $booking), false)
         ->assertDontSee('B/09')
         ->assertDontSee('B/10')
         ->assertDontSee('B/11')
-        ->assertDontSee('Perumahan Lain')
         ->assertDontSee('Customer Lain')
         ->assertDontSee('Tidak ada booking yang cocok dengan filter.');
 });
@@ -128,7 +157,7 @@ it('shows detailed payment and Midtrans transaction history in the payment list'
         'role' => 'staff_marketing',
         'division_id' => $marketingDivision->id,
     ]);
-    $booking = makePaymentControllerTestBooking();
+    $booking = makePaymentControllerTestBooking($user);
     $paymentOrder = BookingPaymentOrder::query()->create([
         'booking_id' => $booking->id,
         'stage' => 'dp',
@@ -181,7 +210,7 @@ it('allows fully paid bookings to be manually archived and restored', function (
         'role' => 'staff_marketing',
         'division_id' => $marketingDivision->id,
     ]);
-    $booking = makePaymentControllerTestBooking();
+    $booking = makePaymentControllerTestBooking($user);
     BookingPayment::query()->create([
         'booking_id' => $booking->id,
         'stage' => 'dp',
@@ -237,7 +266,7 @@ it('does not allow a booking with an unpaid balance to be archived', function ()
         'role' => 'staff_marketing',
         'division_id' => $marketingDivision->id,
     ]);
-    $booking = makePaymentControllerTestBooking();
+    $booking = makePaymentControllerTestBooking($user);
 
     $this->actingAs($user)
         ->post(route('marketing.payments.archive.store', $booking))
@@ -251,7 +280,7 @@ it('redirects guests to sign in before showing booking payments', function () {
         ->assertRedirect(route('login'));
 });
 
-function makePaymentControllerTestBooking(): Booking
+function makePaymentControllerTestBooking(User $creator): Booking
 {
     $property = Property::create(['name' => 'Perumahan Riwayat']);
     $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
@@ -265,6 +294,7 @@ function makePaymentControllerTestBooking(): Booking
     return Booking::create([
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
+        'created_by' => $creator->id,
         'booking_date' => '2026-10-21',
         'house_price_snapshot' => 100000000,
         'akad_fee' => 2000000,

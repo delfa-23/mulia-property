@@ -75,7 +75,6 @@ test('construction staff can update progress without changing admin fields', fun
     ]);
     $this->get(route('pembangunan.progress.show', [$property, $block, $lot]))
         ->assertSee('Realisasi dan catatan admin.')
-        ->assertSee('12.500.000')
         ->assertSee('bg-orange-50', false)
         ->assertSee('bg-red-50', false)
         ->assertDontSee('name="realization"', false)
@@ -319,6 +318,7 @@ test('lot progress screens total realization across all construction stages', fu
         'block_id' => $block->id,
         'lot_number' => '04',
         'house_price' => 350000000,
+        'construction_realization' => 60000000,
     ]);
     $firstStage = $property->constructionStages()->create([
         'name' => 'Pondasi',
@@ -355,4 +355,45 @@ test('lot progress screens total realization across all construction stages', fu
     $this->get(route('pembangunan.progress.show', [$property, $block, $lot]))
         ->assertSee('Realisasi Pengeluaran')
         ->assertSee('Rp 60.000.000');
+});
+
+test('only admin can update the total lot construction realization', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $staff = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $admin = User::factory()->create(['role' => 'admin']);
+    $property = Property::create(['name' => 'Perumahan Realisasi Total']);
+    $block = Block::create([
+        'property_id' => $property->id,
+        'name' => 'A',
+    ]);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '05',
+        'house_price' => 350000000,
+        'construction_realization' => 10000000,
+    ]);
+
+    $this->actingAs($staff)
+        ->put(route('pembangunan.progress.realization.update', [$property, $block, $lot]), [
+            'construction_realization' => 20000000,
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->put(route('pembangunan.progress.realization.update', [$property, $block, $lot]), [
+            'construction_realization' => 23475250,
+        ])
+        ->assertRedirect(route('pembangunan.progress.show', [$property, $block, $lot]))
+        ->assertSessionHas('success', 'Total realisasi pengeluaran berhasil diperbarui.');
+
+    $this->assertDatabaseHas('lots', [
+        'id' => $lot->id,
+        'construction_realization' => '23475250.00',
+    ]);
 });

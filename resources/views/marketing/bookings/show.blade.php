@@ -18,12 +18,22 @@
                 <div class="flex flex-wrap gap-2">
                     <a href="{{ route('marketing.bookings.edit', $booking) }}" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800" wire:navigate>Edit Booking</a>
                     <a href="{{ route('marketing.bookings.documents.edit', $booking) }}" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800" wire:navigate>Edit Berkas</a>
+                    @if(auth()->user()->isAdmin())
+                        <form method="POST" action="{{ route('marketing.bookings.destroy', $booking) }}" onsubmit="return confirm('Hapus permanen booking ini beserta seluruh data terkait?')">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Hapus Booking</button>
+                        </form>
+                    @endif
                 </div>
             </div>
         </div>
 
         @if(session('success'))
             <div role="status" class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{{ session('success') }}</div>
+        @endif
+        @if(session('document_delete_warning'))
+            <div role="alert" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{{ session('document_delete_warning') }}</div>
         @endif
         @if(session('error'))
             <div role="alert" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ session('error') }}</div>
@@ -37,7 +47,7 @@
                 @if($autoCancelledByDeadline)
                     Booking otomatis dibatalkan karena batas booking terlewati pada {{ $booking->blocking_until?->format('d/m/Y H:i') }}.
                 @else
-                    Batas booking {{ $booking->blocking_until->format('d/m/Y H:i') }} terlewati. Booking akan dibatalkan otomatis.
+                    Deadline blocking {{ $booking->customer->name }} terlewati pada {{ $booking->blocking_until->format('d/m/Y H:i') }}. Booking akan dihapus otomatis jika belum ada pembayaran.
                 @endif
             </p>
         @endif
@@ -178,133 +188,10 @@
                 @endforeach
             </div>
 
-            @if(! $pendingPaymentOrder && $nextPaymentStage && ! in_array($booking->status, ['cancelled', 'finish'], true) && floor($nextPaymentStage['remaining']) >= 1)
-                <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.store', $booking) }}" class="flex flex-wrap items-end gap-4 rounded-lg border border-orange-200 bg-orange-50/50 p-4">
-                    @csrf
-                    <input type="hidden" name="stage" value="{{ $nextPaymentStage['key'] }}">
-                    <div class="min-w-48 flex-1">
-                        <label for="midtrans-amount" class="mb-2 block text-sm font-medium">Bayar via Midtrans · {{ $nextPaymentStage['label'] }}</label>
-                        <input id="midtrans-amount" type="number" name="amount" min="1" max="{{ floor($nextPaymentStage['remaining']) }}" step="1" required value="{{ floor($nextPaymentStage['remaining']) }}" class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-                        <p class="mt-1 text-xs text-zinc-600">Sisa tagihan Rp {{ number_format($nextPaymentStage['remaining'], 0, ',', '.') }}. Pembayaran yang berhasil akan otomatis masuk ke Keuangan.</p>
-                    </div>
-                    <button type="submit" class="rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600">Bayar dengan Midtrans</button>
-                    @error('stage')<p class="basis-full text-sm text-red-600">{{ $message }}</p>@enderror
-                    @error('amount')<p class="basis-full text-sm text-red-600">{{ $message }}</p>@enderror
-                </form>
-            @endif
-
-            @if($pendingPaymentOrder)
-                <div role="status" class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                    <p class="font-semibold">Pembayaran Midtrans sedang menunggu konfirmasi.</p>
-                    <p>Order {{ $pendingPaymentOrder->order_id }} · {{ $pendingPaymentOrder->stage === 'dp' ? 'Pembayaran DP' : 'Biaya Akad' }} · Rp {{ number_format((float) $pendingPaymentOrder->amount, 0, ',', '.') }}</p>
-                    @if($pendingPaymentOrder->redirect_url)
-                        <a href="{{ $pendingPaymentOrder->redirect_url }}" class="inline-flex rounded-lg bg-orange-500 px-4 py-2 font-semibold text-white hover:bg-orange-600">Lanjutkan Pembayaran Midtrans</a>
-                    @else
-                        <p>Konfirmasi transaksi sedang diperiksa. Jangan membuat pembayaran baru untuk tahap ini.</p>
-                    @endif
-                    <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.refresh', $booking) }}">
-                        @csrf
-                        <button type="submit" class="inline-flex rounded-lg border border-amber-700 px-4 py-2 font-semibold hover:bg-amber-100">Cek Status Pembayaran</button>
-                    </form>
-                </div>
-            @elseif($nextPaymentStage && $nextPaymentStage['key'] === 'dp' && ! in_array($booking->status, ['cancelled', 'finish'], true))
-                <p class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
-                    Pencatatan atau pembaruan nominal DP dilakukan melalui
-                    <a href="{{ route('marketing.bookings.edit', $booking) }}" class="font-semibold underline" wire:navigate>Edit Booking</a>.
-                </p>
-            @elseif($nextPaymentStage && ! in_array($booking->status, ['cancelled', 'finish'], true))
-                <form method="POST" action="{{ route('marketing.bookings.payments.store', $booking) }}" class="space-y-4 rounded-lg border border-blue-200 bg-blue-50/50 p-4">
-                    @csrf
-                    <h3 class="font-semibold">Catat Pembayaran: {{ $nextPaymentStage['label'] }}</h3>
-                    <input type="hidden" name="stage" value="{{ $nextPaymentStage['key'] }}">
-                    <div class="grid gap-4 sm:grid-cols-2">
-                        <div>
-                            <label for="payment-amount" class="mb-2 block text-sm font-medium">Nominal pembayaran (sisa Rp {{ number_format($nextPaymentStage['remaining'], 0, ',', '.') }})</label>
-                            <input id="payment-amount" type="text" name="amount" inputmode="decimal" data-currency-input data-currency-min="0.01" data-currency-max="{{ $nextPaymentStage['remaining'] }}" data-currency-step="0.01" autocomplete="off" required value="{{ old('amount') }}" class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-                            @error('amount')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-                        </div>
-                        <div>
-                            <label for="payment-date" class="mb-2 block text-sm font-medium">Tanggal Pembayaran</label>
-                            <input id="payment-date" type="datetime-local" name="paid_at" value="{{ old('paid_at', now()->format('Y-m-d\TH:i')) }}" required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-                            @error('paid_at')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-                        </div>
-                        <div>
-                            <label for="payment-method" class="mb-2 block text-sm font-medium">Metode / Sumber Pembayaran</label>
-                            <input id="payment-method" name="payment_method" value="{{ old('payment_method') }}" maxlength="100" placeholder="Tunai / Transfer / Bank ..." class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-                        </div>
-                        <div>
-                            <label for="payment-reference" class="mb-2 block text-sm font-medium">Referensi / No. Bukti</label>
-                            <input id="payment-reference" name="reference" value="{{ old('reference') }}" maxlength="255" class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-                        </div>
-                    </div>
-                    <div>
-                        <label for="payment-notes" class="mb-2 block text-sm font-medium">Catatan</label>
-                        <textarea id="payment-notes" name="notes" rows="2" class="w-full rounded-lg border border-zinc-300 px-3 py-2">{{ old('notes') }}</textarea>
-                    </div>
-                    @error('stage')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
-                    <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">Simpan Pembayaran</button>
-                </form>
-            @else
-                @if(in_array($booking->status, ['cancelled', 'finish'], true))
-                    <p class="rounded-lg bg-zinc-100 p-4 text-sm text-zinc-700">Pembayaran tidak dapat dicatat karena booking berstatus {{ ucfirst($booking->status) }}.</p>
-                @else
-                    <p class="rounded-lg bg-green-50 p-4 text-sm font-medium text-green-800">Semua tahap pembayaran sudah lunas.</p>
-                @endif
-            @endif
-        </section>
-
-        <section class="rounded-xl border border-zinc-200 bg-white p-6">
-            <h2 class="text-lg font-semibold">Riwayat Pembayaran</h2>
-            <div class="mt-4 overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-zinc-50"><tr><th class="px-4 py-3">Tanggal</th><th class="px-4 py-3">Tahap</th><th class="px-4 py-3">Metode / Referensi</th><th class="px-4 py-3">PIC</th><th class="px-4 py-3 text-right">Nominal</th></tr></thead>
-                    <tbody class="divide-y divide-zinc-200">
-                        @forelse($booking->payments as $payment)
-                            <tr>
-                                <td class="px-4 py-3">{{ $payment->paid_at?->format('d/m/Y H:i') }}</td>
-                                <td class="px-4 py-3">{{ ['dp' => 'Pembayaran DP', 'akad_fee' => 'Biaya Akad', 'bank_settlement' => 'Pembayaran DP (Bank)'][$payment->stage] ?? ucfirst($payment->stage) }}</td>
-                                <td class="px-4 py-3">
-                                    {{ $payment->payment_method ?: '-' }}{{ $payment->reference ? ' / '.$payment->reference : '' }}
-                                    @if($payment->paymentOrder)
-                                        <span class="block text-xs text-zinc-500">Order: {{ $payment->paymentOrder->order_id }}</span>
-                                        <span class="block text-xs text-zinc-500">ID Transaksi: {{ $payment->paymentOrder->transaction_id ?: '-' }}</span>
-                                    @endif
-                                    <span class="block text-xs text-zinc-500">{{ $payment->notes }}</span>
-                                </td>
-                                <td class="px-4 py-3">{{ $payment->recordedBy?->name ?? '-' }}</td>
-                                <td class="px-4 py-3 text-right">Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}</td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="5" class="px-4 py-8 text-center text-zinc-500">Belum ada pembayaran tercatat.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section class="rounded-xl border border-zinc-200 bg-white p-6">
-            <h2 class="text-lg font-semibold">Riwayat Transaksi Midtrans</h2>
-            <div class="mt-4 overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-zinc-50"><tr><th class="px-4 py-3">Waktu</th><th class="px-4 py-3">Order / ID Transaksi</th><th class="px-4 py-3">Tahap</th><th class="px-4 py-3">Metode</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Nominal</th></tr></thead>
-                    <tbody class="divide-y divide-zinc-200">
-                        @forelse($booking->paymentOrders as $paymentOrder)
-                            <tr>
-                                <td class="px-4 py-3">{{ $paymentOrder->created_at?->format('d/m/Y H:i') }}</td>
-                                <td class="px-4 py-3">
-                                    <span class="block">{{ $paymentOrder->order_id }}</span>
-                                    <span class="block text-xs text-zinc-500">ID Transaksi: {{ $paymentOrder->transaction_id ?: '-' }}</span>
-                                </td>
-                                <td class="px-4 py-3">{{ $paymentOrder->stage === 'dp' ? 'Pembayaran DP' : 'Biaya Akad' }}</td>
-                                <td class="px-4 py-3">{{ $paymentOrder->payment_type ? str_replace('_', ' ', $paymentOrder->payment_type) : '-' }}</td>
-                                <td class="px-4 py-3">{{ ucfirst($paymentOrder->status) }}</td>
-                                <td class="px-4 py-3 text-right">Rp {{ number_format((float) $paymentOrder->amount, 0, ',', '.') }}</td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="6" class="px-4 py-8 text-center text-zinc-500">Belum ada transaksi Midtrans.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
+            <div class="flex justify-end">
+                <a href="{{ route('marketing.payments.index', ['search' => $booking->customer?->name]) }}" class="inline-flex rounded-lg border border-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50" wire:navigate>
+                    Kelola di Menu Pembayaran
+                </a>
             </div>
         </section>
 

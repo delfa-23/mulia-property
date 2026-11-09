@@ -44,6 +44,7 @@ class MarketingLead extends Model
         'domicile',
         'sales_id',
         'assigned_user_id',
+        'created_by',
         'archived_at',
         'category',
         'source',

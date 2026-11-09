@@ -292,6 +292,37 @@ test('admin dashboard averages weighted construction progress within selected fi
     $response->assertViewHas('stats', fn (array $stats): bool => $stats['physical_progress'] === 7.6);
 });
 
+test('admin dashboard caps each lot weighted physical progress at one hundred percent', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $property = Property::create(['name' => 'Perumahan Progress Maksimal']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
+
+    foreach (range(1, 3) as $order) {
+        $stage = ConstructionStage::create([
+            'name' => 'Tahap '.$order,
+            'order' => $order,
+            'max_progress' => 81.25,
+            'is_active' => true,
+        ]);
+        ConstructionProgress::create([
+            'lot_id' => $lot->id,
+            'stage_id' => $stage->id,
+            'progress' => 100,
+            'updated_by' => $admin->id,
+        ]);
+    }
+
+    $this->actingAs($admin)
+        ->get(route('admin.dashboard', ['property_id' => $property->id]))
+        ->assertViewHas('stats', fn (array $stats): bool => $stats['physical_progress'] === 100.0);
+});
+
 test('construction dashboard filters lot progress statistics by property and block', function () {
     $division = Division::create([
         'name' => 'Pembangunan',
@@ -595,18 +626,21 @@ test('construction dashboard separates construction and facility budgets and exp
         'block_id' => $block->id,
         'lot_number' => 'A-01',
         'house_price' => 500000000,
+        'construction_realization' => 300,
         'status' => 'available',
     ]);
     $secondLot = Lot::create([
         'block_id' => $block->id,
         'lot_number' => 'A-02',
         'house_price' => 500000000,
+        'construction_realization' => 250,
         'status' => 'available',
     ]);
     $rabFacility = CommonFacility::create([
         'property_id' => $property->id,
         'name' => 'Taman',
         'budget' => 900,
+        'realization' => 290,
     ]);
     $legacyFacility = CommonFacility::create([
         'property_id' => $property->id,
@@ -679,23 +713,23 @@ test('construction dashboard separates construction and facility budgets and exp
         ->get(route('pembangunan.dashboard', ['property_id' => $property->id]));
 
     $response->assertSee('Rp 1.300')
-        ->assertSee('Rp 400')
-        ->assertSee('Rp 900')
+        ->assertSee('Rp 550')
+        ->assertSee('Rp 750')
         ->assertSee('Rp 700')
-        ->assertSee('Rp 140')
-        ->assertSee('Rp 560')
+        ->assertSee('Rp 330')
+        ->assertSee('Rp 370')
         ->assertSee('Rp 2.000')
-        ->assertSee('Rp 540')
-        ->assertSee('Rp 1.460')
+        ->assertSee('Rp 880')
+        ->assertSee('Rp 1.120')
         ->assertViewHas('constructionBudget', fn (int|float|string $total): bool => (float) $total === 1300.0)
-        ->assertViewHas('constructionExpense', fn (int|float|string $total): bool => (float) $total === 400.0)
-        ->assertViewHas('constructionDeviation', fn (int|float|string $total): bool => (float) $total === 900.0)
+        ->assertViewHas('constructionExpense', fn (int|float|string $total): bool => (float) $total === 550.0)
+        ->assertViewHas('constructionDeviation', fn (int|float|string $total): bool => (float) $total === 750.0)
         ->assertViewHas('totalFacilityBudget', fn (int|float|string $total): bool => (float) $total === 700.0)
-        ->assertViewHas('facilityExpense', fn (int|float|string $total): bool => (float) $total === 140.0)
-        ->assertViewHas('facilityDeviation', fn (int|float|string $total): bool => (float) $total === 560.0)
+        ->assertViewHas('facilityExpense', fn (int|float|string $total): bool => (float) $total === 330.0)
+        ->assertViewHas('facilityDeviation', fn (int|float|string $total): bool => (float) $total === 370.0)
         ->assertViewHas('totalBudget', fn (int|float|string $total): bool => (float) $total === 2000.0)
-        ->assertViewHas('totalExpense', fn (int|float|string $total): bool => (float) $total === 540.0)
-        ->assertViewHas('totalBudgetDeviation', fn (int|float|string $total): bool => (float) $total === 1460.0);
+        ->assertViewHas('totalExpense', fn (int|float|string $total): bool => (float) $total === 880.0)
+        ->assertViewHas('totalBudgetDeviation', fn (int|float|string $total): bool => (float) $total === 1120.0);
 });
 
 test('pembangunan staff no longer see the construction finance menu link', function () {
@@ -946,7 +980,7 @@ test('construction finance and document dashboards show a read only site plan', 
     ]);
 
     $dashboardRequests = [
-        ['pembangunan', 'pembangunan.dashboard', ['property_id' => $property->id], true],
+        ['pembangunan', 'pembangunan.dashboard', ['property_id' => $property->id], false],
         ['finance', 'keuangan.cash-position.index', ['site_plan_property_id' => $property->id], false],
         ['pemberkasan', 'pemberkasan.dashboard', ['property_id' => $property->id], false],
     ];
@@ -959,67 +993,12 @@ test('construction finance and document dashboards show a read only site plan', 
             ->assertViewHas('sitePlanLots', fn (Collection $lots): bool => $lots->contains('id', $lot->id));
 
         if ($canEditLot) {
-            $response->assertSee(route('pembangunan.properties.blocks.lots.edit', [$property, $block, $lot]), false)
-                ->assertSee('data-lot-action-label="Edit kavling"', false);
+            $response->assertSee('data-lot-action-label="Edit kavling"', false);
         } else {
             $response->assertSee('data-lot-action-url=""', false)
                 ->assertDontSee(route('admin.properties.blocks.lots.edit', [$property, $block, $lot]), false);
         }
     }
-});
-
-test('construction staff can edit a lot from its site plan but other divisions cannot', function () {
-    $constructionDivision = Division::create([
-        'name' => 'Pembangunan',
-        'slug' => 'pembangunan',
-        'is_active' => true,
-    ]);
-    $constructionUser = User::factory()->create([
-        'role' => 'staff_pembangunan',
-        'division_id' => $constructionDivision->id,
-    ]);
-    $financeDivision = Division::create([
-        'name' => 'Finance',
-        'slug' => 'finance',
-        'is_active' => true,
-    ]);
-    $financeUser = User::factory()->create([
-        'role' => 'staff_finance',
-        'division_id' => $financeDivision->id,
-    ]);
-    $property = Property::create(['name' => 'Perumahan Edit Kavling']);
-    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
-    $lot = Lot::create([
-        'block_id' => $block->id,
-        'lot_number' => 'A-01',
-        'house_price' => 500000000,
-        'status' => 'available',
-    ]);
-    $editUrl = route('pembangunan.properties.blocks.lots.edit', [$property, $block, $lot]);
-
-    $this->actingAs($constructionUser)
-        ->get($editUrl)
-        ->assertSee('Edit Kavling A-01')
-        ->assertSee(route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot]), false)
-        ->assertSee(route('pembangunan.dashboard', ['property_id' => $property->id]), false);
-
-    $this->actingAs($constructionUser)
-        ->put(route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot]), [
-            'lot_number' => '01',
-            'house_price' => 525000000,
-            'status' => 'blocked',
-            'notes' => 'Menunggu pemeriksaan lapangan',
-        ])
-        ->assertRedirect(route('pembangunan.dashboard', ['property_id' => $property->id]))
-        ->assertSessionHas('success', 'Kavling berhasil diperbarui.');
-
-    expect($lot->fresh()->house_price)->toBe('525000000.00')
-        ->and($lot->fresh()->status)->toBe('blocked')
-        ->and($lot->fresh()->notes)->toBe('Menunggu pemeriksaan lapangan');
-
-    $this->actingAs($financeUser)
-        ->get($editUrl)
-        ->assertForbidden();
 });
 
 test('marketing dashboard filters property data and shows block with lot number', function () {
@@ -1138,4 +1117,54 @@ test('marketing dashboard filters property data and shows block with lot number'
             && $stats['booked_lots'] === 1)
         ->assertViewHas('bookingStatusChart', fn (Collection $chart): bool => (int) data_get($chart->firstWhere('status', 'booking'), 'value') === 1)
         ->assertViewHas('monthlyBookingChart', fn (Collection $chart): bool => (int) data_get($chart->firstWhere('key', '2026-09'), 'bookings') === 1);
+});
+
+test('marketing dashboard shows system-wide booking and lot availability', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $marketingUser = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $otherMarketingUser = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Status Global']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $availableLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'available',
+    ]);
+    $bookedLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '02',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Booking Marketing Lain']);
+    $otherBooking = Booking::create([
+        'lot_id' => $bookedLot->id,
+        'customer_id' => $customer->id,
+        'created_by' => $otherMarketingUser->id,
+        'booking_date' => '2026-11-09',
+        'status' => 'booking',
+    ]);
+
+    $this->actingAs($marketingUser)
+        ->get(route('marketing.dashboard', ['property_id' => $property->id]))
+        ->assertDontSee('Customer Booking Marketing Lain')
+        ->assertViewHas('stats', fn (array $stats): bool => $stats['active_bookings'] === 1
+            && $stats['available_lots'] === 1
+            && $stats['booked_lots'] === 1)
+        ->assertViewHas('sitePlanLots', fn (Collection $lots): bool => $lots
+            ->firstWhere('id', $bookedLot->id)?->bookings->isEmpty() ?? false)
+        ->assertViewHas('recentBookings', fn (Collection $bookings): bool => $bookings->contains('id', $otherBooking->id));
+
+    $this->assertModelExists($availableLot);
 });

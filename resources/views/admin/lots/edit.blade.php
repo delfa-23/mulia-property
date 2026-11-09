@@ -114,17 +114,29 @@
                     <label class="block text-sm font-medium text-gray-700">
                         Status
                     </label>
+                    @if(in_array($lot->status, ['finish', 'cancelled'], true))
+                        <input type="hidden" name="status" value="{{ $lot->status }}">
+                    @endif
 
                     <select
-                        name="status"
+                        @if(! in_array($lot->status, ['finish', 'cancelled'], true))
+                            name="status"
+                        @else
+                            disabled
+                        @endif
                         required
                         class="mt-1 block w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     >
+                        @if(in_array($lot->status, ['finish', 'cancelled'], true))
+                            <option value="{{ $lot->status }}" selected>
+                                {{ $lot->status === 'finish' ? 'Finish / Terjual (status lama)' : 'Dibatalkan (status lama)' }}
+                            </option>
+                        @endif
                         <option value="available" @selected(old('status', $lot->status) === 'available')>
                             Tersedia
                         </option>
                         <option value="blocked" @selected(old('status', $lot->status) === 'blocked')>
-                            Blocked
+                            Belum Boleh Dijual
                         </option>
                         <option value="booked" @selected(old('status', $lot->status) === 'booked')>
                             Booking
@@ -134,12 +146,6 @@
                         </option>
                         <option value="akad" @selected(old('status', $lot->status) === 'akad')>
                             Akad
-                        </option>
-                        <option value="finish" @selected(old('status', $lot->status) === 'finish')>
-                            Finish
-                        </option>
-                        <option value="cancelled" @selected(old('status', $lot->status) === 'cancelled')>
-                            Dibatalkan
                         </option>
                     </select>
 

@@ -21,6 +21,12 @@ class BookingPayment extends Model
         'reference',
         'notes',
         'recorded_by',
+        'payment_channel',
+        'approval_status',
+        'proof_path',
+        'reviewed_by',
+        'reviewed_at',
+        'rejection_reason',
     ];
 
     protected function casts(): array
@@ -28,6 +34,7 @@ class BookingPayment extends Model
         return [
             'amount' => 'decimal:2',
             'paid_at' => 'datetime',
+            'reviewed_at' => 'datetime',
         ];
     }
 
@@ -39,6 +46,11 @@ class BookingPayment extends Model
     public function recordedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function reviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
     }
 
     public function financeCashFlow(): HasOne

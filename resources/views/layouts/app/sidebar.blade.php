@@ -44,6 +44,15 @@
                             Activity Logs
                         </flux:sidebar.item>
 
+                        <flux:sidebar.item
+                            icon="check-circle"
+                            :href="route('admin.payments.approvals')"
+                            :current="request()->routeIs('admin.payments.approvals') || request()->routeIs('admin.payments.approve') || request()->routeIs('admin.payments.reject')"
+                            wire:navigate
+                        >
+                            Persetujuan Pembayaran
+                        </flux:sidebar.item>
+
                     </flux:sidebar.group>
 
                 @endif
@@ -251,6 +260,14 @@
                             wire:navigate
                         >
                             Saldo Bank &amp; Rencana Finance
+                        </flux:sidebar.item>
+                        <flux:sidebar.item
+                            icon="document-chart-bar"
+                            :href="route('keuangan.payment-reports.index')"
+                            :current="request()->routeIs('keuangan.payment-reports.*')"
+                            wire:navigate
+                        >
+                            Laporan Pembayaran
                         </flux:sidebar.item>
                     </flux:sidebar.group>
                 @endif

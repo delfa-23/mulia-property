@@ -22,6 +22,82 @@
             </span>
         </header>
 
+        @if($pendingManualPayments->isNotEmpty())
+            <section class="overflow-hidden rounded-xl border border-amber-400 bg-white shadow-lg dark:border-amber-700 dark:bg-zinc-900" aria-labelledby="pending-payment-heading">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-l-4 border-amber-500 bg-[#FFF2CC] px-5 py-4 dark:bg-amber-950/30">
+                    <div>
+                        <h2 id="pending-payment-heading" class="font-bold text-amber-950 dark:text-amber-200">Pembayaran Manual Menunggu Persetujuan</h2>
+                        <p class="mt-1 text-sm font-bold text-amber-950 dark:text-amber-100">{{ $pendingManualPayments->count() }} pembayaran perlu diperiksa admin.</p>
+                    </div>
+                </div>
+                <div class="space-y-4 p-5">
+                    @foreach($pendingManualPayments as $payment)
+                        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                    <p class="font-bold text-[#10233D] dark:text-white">{{ $payment->booking->customer->name ?? '-' }}</p>
+                                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
+                                        {{ $payment->booking->lot->block->property->name ?? '-' }} · Kavling {{ $payment->booking->lot->lot_number }}
+                                    </p>
+                                    <p class="mt-2 text-sm text-zinc-700 dark:text-zinc-200">
+                                        {{ $payment->stage === 'akad_fee' ? 'Biaya Akad' : 'Pembayaran Rumah' }}
+                                        · Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}
+                                        · {{ $payment->paid_at->format('d/m/Y H:i') }}
+                                    </p>
+                                    @if($payment->notes)<p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Keterangan: {{ $payment->notes }}</p>@endif
+                                    @if($payment->proof_path)
+                                        <a href="{{ Storage::url($payment->proof_path) }}" target="_blank" class="mt-2 inline-flex text-sm font-semibold text-blue-700 underline hover:text-blue-900">Lihat bukti pembayaran</a>
+                                    @endif
+
+                                    @if($pendingUnpaidReasons->isNotEmpty())
+                                        <section class="overflow-hidden rounded-xl border border-blue-400 bg-white shadow-lg dark:border-blue-700 dark:bg-zinc-900">
+                                            <div class="border-l-4 border-blue-600 bg-blue-50 px-5 py-4 dark:bg-blue-950/40">
+                                                <h2 class="font-bold text-blue-950 dark:text-blue-100">Alasan Pembayaran Belum Lunas Menunggu Persetujuan</h2>
+                                                                                                    <p class="mt-1 rounded bg-blue-100 px-2 py-1 text-sm font-bold text-slate-950 dark:bg-blue-950 dark:text-white">{{ $pendingUnpaidReasons->count() }} alasan perlu diperiksa admin.</p>
+                                            </div>
+                                            <div class="space-y-3 p-5">
+                                                @foreach($pendingUnpaidReasons as $reasonBooking)
+                                                    <article class="grid gap-4 rounded-xl border border-slate-300 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] dark:border-zinc-700 dark:bg-zinc-900">
+                                                        <div>
+                                                            <p class="font-bold text-slate-950 dark:text-white">{{ $reasonBooking->customer->name }}</p>
+                                                            <p class="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">{{ $reasonBooking->lot->block->property->name }} · Kavling {{ $reasonBooking->lot->lot_number }}</p>
+                                                            <p class="mt-2 rounded-lg bg-slate-100 p-3 text-sm text-slate-950 dark:bg-zinc-800 dark:text-white">{{ $reasonBooking->unpaid_payment_reason }}</p>
+                                                        </div>
+                                                        <div class="flex flex-col justify-center gap-2 sm:flex-row md:flex-col">
+                                                            <form method="POST" action="{{ route('marketing.payments.unpaid-reason.approve', $reasonBooking) }}">
+                                                                @csrf
+                                                                <button type="submit" class="min-h-11 w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">Setujui Alasan</button>
+                                                            </form>
+                                                            <form method="POST" action="{{ route('marketing.payments.unpaid-reason.reject', $reasonBooking) }}">
+                                                                @csrf
+                                                                <button type="submit" class="min-h-11 w-full rounded-lg border-2 border-red-950 bg-red-700 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-red-800 dark:border-red-300">TOLAK ALASAN</button>
+                                                            </form>
+                                                        </div>
+                                                    </article>
+                                                @endforeach
+                                            </div>
+                                        </section>
+                                    @endif
+                                </div>
+                                <div class="grid gap-2 sm:grid-cols-2 lg:min-w-80">
+                                    <form method="POST" action="{{ route('admin.payments.approve', $payment) }}">
+                                        @csrf
+                                        <button type="submit" class="min-h-11 w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-800">Setujui</button>
+                                    </form>
+                                    <form method="POST" action="{{ route('admin.payments.reject', $payment) }}" class="sm:col-span-2 grid gap-2 rounded-xl border border-red-400 bg-red-100 p-3 text-slate-900 shadow-sm dark:border-red-800 dark:bg-red-950/40 dark:text-white">
+                                        @csrf
+                                        <label for="rejection-reason-{{ $payment->id }}" class="text-sm font-bold text-slate-950 dark:text-white">Alasan penolakan</label>
+                                        <textarea id="rejection-reason-{{ $payment->id }}" name="rejection_reason" required maxlength="500" rows="2" class="w-full rounded-lg border-red-400 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus:border-red-600 focus:ring-red-600 dark:border-red-700 dark:bg-zinc-950 dark:text-white"></textarea>
+                                        <button type="submit" class="min-h-11 rounded-lg border border-red-800 bg-red-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-800 dark:bg-red-600 dark:hover:bg-red-500">Tolak Pembayaran</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            </section>
+        @endif
+
         @if(session('success'))
             <div role="status" class="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-[#14532d] shadow-sm">
                 <span class="mt-0.5 font-bold text-emerald-700" aria-hidden="true">✓</span>
@@ -130,18 +206,18 @@
                             ? 'Menunggu pembayaran'
                             : ($nextStage === null ? 'Lunas' : ($hasPaid ? 'Belum lunas' : 'Belum dibayar'));
                     @endphp
-                    <article class="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
+                    <article class="grid gap-5 rounded-xl bg-white p-5 shadow-sm xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)] dark:bg-zinc-900">
                         <div class="space-y-3">
                             <div class="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                    <h3 class="font-semibold text-zinc-900 dark:text-white">
+                                    <h3 class="font-semibold text-slate-950 dark:text-white">
                                         {{ $booking->customer->name }}
-                                        <span class="font-normal text-zinc-500 dark:text-zinc-400">· Booking #{{ $booking->id }}</span>
+                                        <span class="font-normal text-slate-600 dark:text-slate-300">· Booking #{{ $booking->id }}</span>
                                     </h3>
-                                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                                    <p class="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
                                         {{ $booking->lot->block->property->name }} · Blok {{ $booking->lot->block->name }}/{{ $booking->lot->lot_number }}
                                     </p>
-                                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                    <p class="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
                                         Tanggal booking {{ $booking->booking_date?->format('d/m/Y') ?? '-' }}
                                         · Status {{ $booking->status === 'finish' ? 'Serah Terima Rumah' : ucfirst($booking->status) }}
                                     </p>
@@ -157,12 +233,12 @@
 
                             <div class="grid gap-3 sm:grid-cols-2">
                                 @foreach($summary['stages'] as $stage)
-                                    <div class="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                    <div class="rounded-lg border border-slate-300 bg-slate-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
                                         <div class="flex justify-between gap-3 text-sm">
-                                            <span class="font-medium text-zinc-700 dark:text-zinc-300">{{ $stage['label'] }}</span>
-                                            <span class="text-zinc-500 dark:text-zinc-400">{{ $stage['remaining'] <= 0.009 ? 'Lunas' : 'Belum lunas' }}</span>
+                                            <span class="font-medium text-slate-800 dark:text-slate-200">{{ $stage['label'] }}</span>
+                                            <span class="font-semibold text-slate-700 dark:text-slate-200">{{ $stage['remaining'] <= 0.009 ? 'Lunas' : 'Belum lunas' }}</span>
                                         </div>
-                                        <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">Terbayar Rp {{ number_format($stage['paid'], 0, ',', '.') }}</p>
+                                        <p class="mt-2 text-sm font-medium text-slate-700 dark:text-slate-200">Terbayar Rp {{ number_format($stage['paid'], 0, ',', '.') }}</p>
                                         <p class="text-sm font-semibold text-zinc-900 dark:text-white">Sisa Rp {{ number_format($stage['remaining'], 0, ',', '.') }}</p>
                                     </div>
                                 @endforeach
@@ -244,10 +320,34 @@
                                     <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-600/40 focus:ring-offset-2 dark:bg-emerald-600 dark:hover:bg-emerald-500">Arsipkan pembayaran lunas</button>
                                 </form>
                             @endif
-                            <a href="{{ route('marketing.bookings.show', $booking) }}" class="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#c2410c] bg-white px-4 py-2.5 text-center text-sm font-semibold text-[#9a3412] shadow-sm transition hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-600/30 focus:ring-offset-2 dark:border-orange-500 dark:bg-zinc-900 dark:text-orange-300 dark:hover:bg-orange-950" wire:navigate>Lihat detail booking dan riwayat pembayaran</a>
+                            <a href="{{ route('marketing.bookings.show', $booking) }}" class="inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-orange-700 bg-white px-4 py-2.5 text-center text-sm font-bold text-orange-950 shadow-sm transition hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-600/30 focus:ring-offset-2 dark:border-orange-400 dark:bg-zinc-900 dark:text-orange-100 dark:hover:bg-orange-950" wire:navigate>Lihat detail booking dan riwayat pembayaran</a>
                         </div>
 
-                        <div class="flex flex-col justify-center gap-3 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-800/60">
+                        <div class="flex flex-col justify-center gap-3 rounded-xl border border-slate-200 bg-slate-100 p-4 dark:border-zinc-700 dark:bg-zinc-800">
+                            @php
+                                $reasonCanBeEdited = $booking->unpaid_payment_reason === null || $booking->unpaid_payment_reason_status === 'approved';
+                            @endphp
+                            @if($isExpired && $hasPaid && $nextStage !== null)
+                                <form method="POST" action="{{ route('marketing.payments.unpaid-reason.update', $booking) }}" class="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
+                                    @csrf
+                                    @method('PUT')
+                                    <label for="unpaid-payment-reason-{{ $booking->id }}" class="block text-sm font-bold text-amber-950 dark:text-amber-100">Alasan pembayaran belum lunas</label>
+                                    @if($booking->unpaid_payment_reason_status === 'pending')
+                                        <p class="rounded-lg border-2 border-blue-700 bg-blue-100 p-3 text-sm font-black text-slate-950 dark:border-blue-300 dark:bg-blue-950 dark:text-white">ALASAN MENUNGGU PERSETUJUAN ADMIN DAN BELUM DAPAT DIUBAH.</p>
+                                        <p class="rounded-lg bg-white p-3 text-sm text-slate-950 dark:bg-zinc-900 dark:text-white">{{ $booking->unpaid_payment_reason }}</p>
+                                    @elseif($booking->unpaid_payment_reason_status === 'rejected')
+                                        <p class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-bold text-red-950 dark:border-red-700 dark:bg-red-950 dark:text-red-100">Alasan ditolak admin dan tidak dapat diubah.</p>
+                                        <p class="rounded-lg bg-white p-3 text-sm text-slate-950 dark:bg-zinc-900 dark:text-white">{{ $booking->unpaid_payment_reason }}</p>
+                                    @else
+                                        <textarea id="unpaid-payment-reason-{{ $booking->id }}" name="unpaid_payment_reason" rows="4" required minlength="10" maxlength="2000" placeholder="Tuliskan kendala atau alasan pembayaran belum selesai..." class="w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-500 focus:border-amber-600 focus:ring-amber-600 dark:border-amber-600 dark:bg-zinc-950 dark:text-white">{{ old('unpaid_payment_reason', $booking->unpaid_payment_reason) }}</textarea>
+                                        @if($booking->unpaid_payment_reason_status === 'approved')
+                                            <p class="text-sm font-bold text-emerald-800 dark:text-emerald-200">Alasan telah disetujui. Perubahan alasan akan dikirim kembali untuk persetujuan.</p>
+                                        @endif
+                                    @endif
+                                    @error('unpaid_payment_reason')<p class="text-sm font-semibold text-red-700 dark:text-red-300">{{ $message }}</p>@enderror
+                                    @if($reasonCanBeEdited)<button type="submit" class="w-full rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-800">Simpan alasan</button>@endif
+                                </form>
+                            @endif
                             @if($pendingOrder)
                                 <p class="text-sm font-semibold text-amber-800 dark:text-amber-200">Transaksi Midtrans belum terkonfirmasi</p>
                                 <p class="text-sm text-zinc-600 dark:text-zinc-300">
@@ -263,25 +363,58 @@
                                     @csrf
                                     <button type="submit" class="w-full rounded-lg border border-amber-700 px-4 py-2.5 text-sm font-semibold text-amber-900 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-950">Cek status pembayaran</button>
                                 </form>
-                            @elseif($nextStage && ! in_array($booking->status, ['cancelled', 'finish'], true) && ! $isExpired && floor($nextStage['remaining']) >= 1)
-                                <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.store', $booking) }}" class="space-y-3">
-                                    @csrf
-                                    <input type="hidden" name="stage" value="{{ $nextStage['key'] }}">
-                                    <div>
-                                        <label for="payment-amount-{{ $booking->id }}" class="mb-1.5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                                            {{ $nextStage['label'] }} · Sisa Rp {{ number_format($nextStage['remaining'], 0, ',', '.') }}
-                                        </label>
-                                        <input id="payment-amount-{{ $booking->id }}" type="number" name="amount" min="1" max="{{ floor($nextStage['remaining']) }}" step="1" required value="{{ floor($nextStage['remaining']) }}" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900">
-                                    </div>
-                                    <p class="text-xs leading-5 text-zinc-600 dark:text-zinc-400">Customer memilih Virtual Account, QRIS, e-wallet, atau metode lain yang tersedia di halaman Midtrans.</p>
-                                    <button type="submit" class="w-full rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700">Bayar via Midtrans</button>
-                                    @error('stage')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
-                                    @error('amount')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
-                                </form>
+                            @elseif(! in_array($booking->status, ['cancelled', 'finish'], true) && ! $isExpired)
+                                @foreach($summary['stages'] as $stageIndex => $stage)
+                                    @if($stage['remaining'] > 0.009 && floor($stage['remaining']) >= 1)
+                                        @php
+                                            $akadWaitingForHouse = $stage['key'] === 'akad_fee'
+                                                && collect($summary['stages'])->firstWhere('key', 'dp')['remaining'] > 0.009;
+                                        @endphp
+                                        <form method="POST" action="{{ route('marketing.bookings.payments.midtrans.store', $booking) }}" class="space-y-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+                                            @csrf
+                                            <input type="hidden" name="stage" value="{{ $stage['key'] }}">
+                                            <div>
+                                                <label for="payment-amount-{{ $booking->id }}-{{ $stage['key'] }}" class="mb-1.5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                                                    {{ $stage['label'] }} · Sisa Rp {{ number_format($stage['remaining'], 0, ',', '.') }}
+                                                </label>
+                                                <input id="payment-amount-{{ $booking->id }}-{{ $stage['key'] }}" type="text" name="amount" inputmode="numeric" data-currency-input data-currency-min="1" data-currency-max="{{ floor($stage['remaining']) }}" required value="{{ floor($stage['remaining']) }}" @disabled($akadWaitingForHouse) class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 disabled:bg-zinc-100 disabled:text-zinc-500 dark:border-zinc-600 dark:bg-zinc-900 dark:disabled:bg-zinc-800">
+                                            </div>
+                                            @if($akadWaitingForHouse)
+                                                <p class="text-xs leading-5 text-amber-700 dark:text-amber-300">Pembayaran biaya akad dapat dimulai setelah pembayaran rumah lunas.</p>
+                                                <button type="button" disabled class="w-full rounded-lg bg-zinc-300 px-4 py-2.5 text-sm font-semibold text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400">Menunggu Pelunasan Rumah</button>
+                                            @else
+                                                <p class="text-xs leading-5 text-zinc-600 dark:text-zinc-400">Customer memilih Virtual Account, QRIS, e-wallet, atau metode lain yang tersedia di halaman Midtrans.</p>
+                                                <button type="submit" class="w-full rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700">Bayar {{ $stage['label'] }} via Midtrans</button>
+                                            @endif
+                                        </form>
+                                        @if(!$akadWaitingForHouse)
+                                            <form method="POST" enctype="multipart/form-data" action="{{ route('marketing.bookings.payments.store', $booking) }}" class="space-y-3 rounded-lg border border-slate-300 bg-white p-4 shadow-sm dark:border-zinc-600 dark:bg-zinc-900">
+                                                @csrf
+                                                <input type="hidden" name="stage" value="{{ $stage['key'] }}">
+                                                <input type="hidden" name="paid_at" value="{{ now()->format('Y-m-d H:i') }}">
+                                                <div>
+                                                    <label class="mb-1.5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">Pembayaran Manual · {{ $stage['label'] }}</label>
+                                                    <input type="text" name="amount" inputmode="numeric" data-currency-input data-currency-min="1" data-currency-max="{{ floor($stage['remaining']) }}" required value="{{ floor($stage['remaining']) }}" class="w-full rounded-lg border border-slate-400 bg-white px-3 py-2 text-slate-950 placeholder:text-slate-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white">
+                                                </div>
+                                                <div>
+                                                    <label class="mb-1.5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">Bukti Pembayaran</label>
+                                                    <input type="file" name="proof" accept=".jpg,.jpeg,.png,.pdf" required class="w-full text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="mb-1.5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">Metode / Keterangan</label>
+                                                    <input type="text" name="payment_method" placeholder="Transfer bank / cash" class="w-full rounded-lg border border-slate-400 bg-white px-3 py-2 text-slate-950 placeholder:text-slate-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white">
+                                                    <textarea name="notes" rows="2" placeholder="Keterangan tambahan" class="mt-2 w-full rounded-lg border border-slate-400 bg-white px-3 py-2 text-slate-950 placeholder:text-slate-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-white"></textarea>
+                                                </div>
+                                                <button type="submit" class="w-full rounded-lg border border-orange-600 px-4 py-2.5 text-sm font-semibold text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950">Ajukan Pembayaran Manual</button>
+                                                <p class="text-xs font-medium text-slate-600 dark:text-slate-300">Pembayaran akan dihitung finance setelah disetujui admin.</p>
+                                            </form>
+                                        @endif
+                                    @endif
+                                @endforeach
                             @elseif($booking->status === 'cancelled' || $booking->status === 'finish')
                                 <p class="text-sm text-zinc-600 dark:text-zinc-300">Pembayaran online tidak tersedia untuk booking {{ $booking->status === 'finish' ? 'yang sudah diserahterimakan' : 'yang dibatalkan' }}.</p>
                             @elseif($isExpired)
-                                <p class="text-sm text-amber-800 dark:text-amber-200">Batas booking terlewati. Perbarui status booking sebelum membuat pembayaran.</p>
+                                <p class="text-sm font-bold text-slate-950 dark:text-white">Batas booking terlewati. Perbarui status booking sebelum membuat pembayaran.</p>
                             @elseif($nextStage)
                                 <p class="text-sm text-zinc-600 dark:text-zinc-300">Sisa tagihan tahap ini kurang dari nominal minimum pembayaran online.</p>
                             @else

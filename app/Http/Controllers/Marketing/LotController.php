@@ -6,15 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Models\Block;
 use App\Models\Lot;
 use App\Models\Property;
+use App\Services\MarketingLeadAccess;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class LotController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, MarketingLeadAccess $leadAccess): View
     {
         $lots = Lot::query()
-            ->with(['block.property', 'bookings' => fn ($query) => $query->whereIn('status', ['booking', 'process', 'akad', 'finish'])->with('customer')])
+            ->with([
+                'block.property',
+                'bookings' => fn ($query) => $query
+                    ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+                    ->when(
+                        ! $leadAccess->canManageTeam($request->user()),
+                        fn ($query) => $query->where('created_by', $request->user()->id),
+                    )
+                    ->with('customer'),
+            ])
             ->when($request->filled('property_id'), fn ($query) => $query->whereHas('block', fn ($block) => $block->where('property_id', $request->integer('property_id'))))
             ->when($request->filled('lot_id'), fn ($query) => $query->whereKey($request->integer('lot_id')))
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')))

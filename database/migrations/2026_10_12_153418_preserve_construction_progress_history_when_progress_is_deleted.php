@@ -20,16 +20,24 @@ return new class extends Migration
         });
 
         DB::table('construction_progress_histories')
-            ->join(
-                'construction_progress',
-                'construction_progress_histories.construction_progress_id',
-                '=',
-                'construction_progress.id'
-            )
-            ->update([
-                'construction_progress_histories.lot_id' => DB::raw('construction_progress.lot_id'),
-                'construction_progress_histories.stage_id' => DB::raw('construction_progress.stage_id'),
-            ]);
+            ->whereNotNull('construction_progress_id')
+            ->orderBy('id')
+            ->select(['id', 'construction_progress_id'])
+            ->get()
+            ->each(function (object $history): void {
+                $progress = DB::table('construction_progress')
+                    ->where('id', $history->construction_progress_id)
+                    ->first(['lot_id', 'stage_id']);
+
+                if ($progress !== null) {
+                    DB::table('construction_progress_histories')
+                        ->where('id', $history->id)
+                        ->update([
+                            'lot_id' => $progress->lot_id,
+                            'stage_id' => $progress->stage_id,
+                        ]);
+                }
+            });
 
         Schema::table('construction_progress_histories', function (Blueprint $table): void {
             $table->foreign('construction_progress_id')

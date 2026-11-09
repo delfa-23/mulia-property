@@ -116,3 +116,58 @@ test('construction progress pages and dashboard summarize stage progress by bobo
         ->assertViewHas('latestProgressUpdates', fn ($updates): bool => ! $updates->contains('id', $orphanedProgress->id)
             && $updates->every(fn (ConstructionProgress $progress): bool => $progress->stage_id !== null));
 });
+
+test('construction physical progress is capped at one hundred percent and its progress bar is visible', function () {
+    $division = Division::create([
+        'name' => 'Pembangunan',
+        'slug' => 'pembangunan',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Bobot Berlebih']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
+
+    foreach (range(1, 3) as $order) {
+        $stage = $property->constructionStages()->create([
+            'name' => 'Tahap '.$order,
+            'order' => $order,
+            'max_progress' => 81.25,
+            'is_active' => true,
+        ]);
+        ConstructionProgress::create([
+            'lot_id' => $lot->id,
+            'stage_id' => $stage->id,
+            'progress' => 100,
+            'updated_by' => $user->id,
+        ]);
+    }
+
+    $detailResponse = $this->actingAs($user)->get(route('pembangunan.progress.show', [
+        'property' => $property,
+        'block' => $block,
+        'lot' => $lot,
+    ]));
+    $listResponse = $this->get(route('pembangunan.progress.index', [
+        'property_id' => $property->id,
+    ]));
+    $dashboardResponse = $this->get(route('pembangunan.dashboard', [
+        'property_id' => $property->id,
+    ]));
+
+    $detailResponse->assertSee('100.00%')
+        ->assertDontSee('243.75%')
+        ->assertSee('aria-valuenow="100"', false)
+        ->assertSee('style="width: 100%; background-color: #dc2626"', false);
+    $listResponse->assertSee('100.00%')
+        ->assertDontSee('243.75%');
+    $dashboardResponse->assertViewHas('stats', fn (array $stats): bool => $stats['physical_progress'] === 100.0);
+});

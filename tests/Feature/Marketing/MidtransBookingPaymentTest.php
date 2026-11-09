@@ -27,7 +27,7 @@ it('creates a Midtrans Snap checkout for the next booking payment stage', functi
         'services.midtrans.is_production' => false,
     ]);
     $user = makeMidtransPaymentTestUser();
-    $booking = makeMidtransPaymentTestBooking();
+    $booking = makeMidtransPaymentTestBooking($user);
 
     $response = $this->actingAs($user)
         ->post(route('marketing.bookings.payments.midtrans.store', $booking), [
@@ -96,7 +96,7 @@ it('reconciles a settled Midtrans order when staff checks its status', function 
         'services.midtrans.is_production' => false,
     ]);
     $user = makeMidtransPaymentTestUser();
-    $booking = makeMidtransPaymentTestBooking();
+    $booking = makeMidtransPaymentTestBooking($user);
     $order = BookingPaymentOrder::query()->create([
         'booking_id' => $booking->id,
         'stage' => 'dp',
@@ -143,7 +143,7 @@ it('reconciles a settled Midtrans order when staff returns from checkout', funct
         'services.midtrans.is_production' => false,
     ]);
     $user = makeMidtransPaymentTestUser();
-    $booking = makeMidtransPaymentTestBooking();
+    $booking = makeMidtransPaymentTestBooking($user);
     $order = BookingPaymentOrder::query()->create([
         'booking_id' => $booking->id,
         'stage' => 'dp',
@@ -205,7 +205,7 @@ it('rejects Midtrans notifications with an invalid signature without changing pa
 
 it('syncs a manually recorded booking payment to confirmed finance income', function () {
     $user = makeMidtransPaymentTestUser();
-    $booking = makeMidtransPaymentTestBooking();
+    $booking = makeMidtransPaymentTestBooking($user);
 
     $this->actingAs($user)
         ->post(route('marketing.bookings.payments.store', $booking), [
@@ -225,7 +225,7 @@ it('syncs a manually recorded booking payment to confirmed finance income', func
 
 it('does not allow a manual payment while a Midtrans order for the stage is pending', function () {
     $user = makeMidtransPaymentTestUser();
-    $booking = makeMidtransPaymentTestBooking();
+    $booking = makeMidtransPaymentTestBooking($user);
     BookingPaymentOrder::query()->create([
         'booking_id' => $booking->id,
         'stage' => 'dp',
@@ -278,7 +278,7 @@ function makeMidtransPaymentTestUser(): User
     ]);
 }
 
-function makeMidtransPaymentTestBooking(): Booking
+function makeMidtransPaymentTestBooking(?User $creator = null): Booking
 {
     $property = Property::create(['name' => 'Perumahan Midtrans']);
     $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
@@ -297,6 +297,7 @@ function makeMidtransPaymentTestBooking(): Booking
     return Booking::create([
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
+        'created_by' => $creator?->id,
         'booking_date' => today(),
         'house_price_snapshot' => 100000000,
         'dp_percentage' => 100,

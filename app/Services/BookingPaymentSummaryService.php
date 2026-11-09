@@ -20,14 +20,16 @@ class BookingPaymentSummaryService
      */
     public function summarize(Booking $booking): array
     {
-        $booking->loadMissing(['lot', 'payments']);
+        $approvedPayments = $booking->payments()
+            ->where('approval_status', 'approved')
+            ->get();
 
         $housePrice = (float) ($booking->house_price_snapshot ?? $booking->lot->house_price);
         $targets = [
-            'dp' => ['label' => 'Pembayaran DP', 'due' => $housePrice],
+            'dp' => ['label' => 'Pembayaran Rumah (DP)', 'due' => $housePrice],
             'akad_fee' => ['label' => 'Biaya Akad', 'due' => (float) $booking->akad_fee],
         ];
-        $paidAmounts = $booking->payments
+        $paidAmounts = $approvedPayments
             ->groupBy('stage')
             ->map(fn ($payments) => (float) $payments->sum('amount'));
         $stages = [];
@@ -42,11 +44,11 @@ class BookingPaymentSummaryService
                 'due' => $target['due'],
                 'paid' => $paid,
                 'remaining' => max(0, round($target['due'] - $paid, 2)),
-                'paid_percentage' => $target['due'] > 0 ? min(100, $paid / $target['due'] * 100) : 100,
+                'paid_percentage' => $target['due'] > 0 ? min(100, $paid / $target['due'] * 100) : 0,
             ];
         }
 
-        $totalPaid = (float) $booking->payments->sum('amount');
+        $totalPaid = (float) $approvedPayments->sum('amount');
         $dpPaid = (float) $paidAmounts->get('dp', 0) + (float) $paidAmounts->get('bank_settlement', 0);
 
         return [

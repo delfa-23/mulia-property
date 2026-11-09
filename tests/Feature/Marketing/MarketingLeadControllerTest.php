@@ -11,6 +11,39 @@ use App\Models\Sales;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 
+it('shows CRM reports for all marketing accounts to staff users', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $staff = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $otherStaff = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+        'name' => 'Marketing Lain',
+    ]);
+    MarketingLead::create([
+        'name' => 'Prospek Marketing Lain',
+        'date_received' => '2026-10-10',
+        'assigned_user_id' => $otherStaff->id,
+        'created_by' => $otherStaff->id,
+        'category' => 'Hot',
+        'source' => 'Instagram / FB',
+    ]);
+
+    $this->actingAs($staff)
+        ->get(route('marketing.reports.crm', [
+            'from' => '2026-10-01',
+            'to' => '2026-10-31',
+        ]))
+        ->assertSee('Marketing Lain')
+        ->assertViewHas('metrics', fn (array $metrics): bool => $metrics['leads'] === 1);
+});
+
 it('records a lead with its marketing category, source, and owner', function () {
     $user = createMarketingLeadFeatureTestUser();
     $sales = Sales::create(['name' => 'Sales Prospek']);
@@ -32,14 +65,54 @@ it('records a lead with its marketing category, source, and owner', function () 
 
     $this->assertDatabaseHas('marketing_leads', [
         'name' => 'Calon Pembeli',
-        'date_received' => '2026-10-14',
+        'date_received' => '2026-10-14 00:00:00',
         'phone' => '081234567890',
         'domicile' => 'Perbaungan',
         'sales_id' => $sales->id,
         'category' => 'Hot',
         'source' => 'Meta Ads',
         'last_progress' => 'Meminta jadwal survei.',
+        'created_by' => $user->id,
     ]);
+});
+
+it('keeps prospect data private to its creator while allowing admins to see all records', function () {
+    $staff = createMarketingLeadFeatureTestUser();
+    $otherStaff = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $staff->division_id,
+    ]);
+    $teamLead = User::factory()->create([
+        'role' => 'tl_marketing',
+        'division_id' => $staff->division_id,
+    ]);
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $staff->division_id,
+    ]);
+    $ownLead = MarketingLead::factory()->create([
+        'name' => 'Prospek Akun Saya',
+        'created_by' => $staff->id,
+    ]);
+    $otherLead = MarketingLead::factory()->create([
+        'name' => 'Prospek Akun Lain',
+        'created_by' => $otherStaff->id,
+    ]);
+
+    $this->actingAs($staff)
+        ->get(route('marketing.leads.index'))
+        ->assertSee('Prospek Akun Saya')
+        ->assertDontSee('Prospek Akun Lain');
+
+    $this->get(route('marketing.leads.show', $otherLead))->assertNotFound();
+    $this->actingAs($teamLead)->get(route('marketing.leads.show', $otherLead))->assertNotFound();
+    $this->actingAs($admin)->get(route('marketing.leads.show', $otherLead))->assertOk();
+
+    $this->actingAs($staff)
+        ->put(route('marketing.leads.update', $otherLead), [])
+        ->assertNotFound();
+
+    $this->assertModelExists($ownLead);
 });
 
 it('accepts the Cool category for leads that did not respond', function () {
@@ -112,17 +185,20 @@ it('counts only leads linked to bookings at akad or finished status', function (
         'name' => 'Lead Akad',
         'category' => 'Hot',
         'source' => 'Rekomendasi',
+        'created_by' => $user->id,
     ]);
     $finishedLead = MarketingLead::factory()->create([
         'name' => 'Lead Selesai',
         'category' => 'Warm',
         'source' => 'Tiktok',
+        'created_by' => $user->id,
     ]);
     $processLead = MarketingLead::factory()->create([
         'name' => 'Lead Proses',
         'category' => 'Cool',
         'source' => 'Marketplace',
         'last_progress' => '<script>alert("x")</script>',
+        'created_by' => $user->id,
     ]);
 
     createMarketingLeadFeatureTestBooking($akadLead, 'akad');
@@ -153,7 +229,10 @@ it('links a prospect when a booking is created from the marketing form', functio
         'house_price' => 350000000,
     ]);
     $customer = Customer::create(['name' => 'Customer Prospek']);
-    $lead = MarketingLead::factory()->create(['name' => 'Lead Menjadi Booking']);
+    $lead = MarketingLead::factory()->create([
+        'name' => 'Lead Menjadi Booking',
+        'created_by' => $user->id,
+    ]);
 
     $this->actingAs($user)
         ->get(route('marketing.bookings.create'))
@@ -181,9 +260,9 @@ it('links a prospect when a booking is created from the marketing form', functio
     ]);
 });
 
-it('archives a lead record without removing it when it is already associated with a booking', function () {
+it('archives an owned lead without removing it when it is already associated with a booking', function () {
     $user = createMarketingLeadFeatureTestUser();
-    $lead = MarketingLead::factory()->create();
+    $lead = MarketingLead::factory()->create(['created_by' => $user->id]);
     createMarketingLeadFeatureTestBooking($lead, 'process');
 
     $this->actingAs($user)
@@ -193,6 +272,42 @@ it('archives a lead record without removing it when it is already associated wit
 
     $this->assertModelExists($lead);
     $this->assertNotNull($lead->fresh()->archived_at);
+});
+
+it('allows an admin to permanently delete a lead', function () {
+    $admin = createMarketingLeadFeatureTestAdmin();
+    $lead = MarketingLead::factory()->create();
+
+    $this->actingAs($admin)
+        ->delete(route('marketing.leads.force-destroy', $lead))
+        ->assertRedirect(route('marketing.leads.index'))
+        ->assertSessionHas('success', 'Prospek berhasil dihapus permanen.');
+
+    $this->assertModelMissing($lead);
+});
+
+it('forbids non-admin users from permanently deleting a lead', function () {
+    $user = createMarketingLeadFeatureTestUser();
+    $lead = MarketingLead::factory()->create();
+
+    $this->actingAs($user)
+        ->delete(route('marketing.leads.force-destroy', $lead))
+        ->assertForbidden();
+
+    $this->assertModelExists($lead);
+});
+
+it('keeps a linked booking when an admin permanently deletes its lead', function () {
+    $admin = createMarketingLeadFeatureTestAdmin();
+    $lead = MarketingLead::factory()->create();
+    $booking = createMarketingLeadFeatureTestBooking($lead, 'process');
+
+    $this->actingAs($admin)
+        ->delete(route('marketing.leads.force-destroy', $lead))
+        ->assertRedirect(route('marketing.leads.index'));
+
+    $this->assertModelMissing($lead);
+    $this->assertNull($booking->fresh()->lead_id);
 });
 
 it('forbids users outside marketing from accessing lead records', function () {
@@ -225,6 +340,20 @@ function createMarketingLeadFeatureTestUser(): User
     ]);
 }
 
+function createMarketingLeadFeatureTestAdmin(): User
+{
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+
+    return User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $division->id,
+    ]);
+}
+
 function createMarketingLeadFeatureTestBooking(MarketingLead $lead, string $status): Booking
 {
     $property = Property::create(['name' => 'Perumahan untuk '.$lead->name]);
@@ -240,6 +369,7 @@ function createMarketingLeadFeatureTestBooking(MarketingLead $lead, string $stat
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
         'lead_id' => $lead->id,
+        'created_by' => $lead->created_by,
         'booking_date' => '2026-10-12',
         'status' => $status,
     ]);

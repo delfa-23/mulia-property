@@ -321,7 +321,7 @@ const initializeSitePlanViewers = () => {
 					const image = document.createElement('img');
 					image.src = imageUrl;
 					image.alt = `Foto kavling ${lotButton.dataset.lotLabel ?? ''}`;
-					image.className = 'aspect-4/3 w-full rounded-lg bg-slate-100 object-cover dark:bg-zinc-800';
+					image.className = 'aspect-4/3 w-full rounded-lg bg-slate-100 object-cover';
 					return image;
 				}));
 				lotImages.hidden = imageUrls.length === 0;

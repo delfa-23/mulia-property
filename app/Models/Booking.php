@@ -19,6 +19,7 @@ class Booking extends Model
         'customer_id',
         'sales_id',
         'lead_id',
+        'created_by',
         'booking_date',
         'blocking_until',
         'house_price_snapshot',
@@ -28,6 +29,10 @@ class Booking extends Model
         'notes',
         'applicant_work_location_url',
         'spouse_work_location_url',
+        'unpaid_payment_reason',
+        'unpaid_payment_reason_status',
+        'unpaid_payment_reason_reviewed_at',
+        'unpaid_payment_reason_reviewed_by',
     ];
 
     protected function casts(): array
@@ -39,6 +44,7 @@ class Booking extends Model
             'house_price_snapshot' => 'decimal:2',
             'dp_percentage' => 'decimal:2',
             'akad_fee' => 'decimal:2',
+            'unpaid_payment_reason_reviewed_at' => 'datetime',
         ];
     }
 

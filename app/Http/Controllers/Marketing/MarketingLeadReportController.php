@@ -33,9 +33,8 @@ class MarketingLeadReportController extends Controller
         }
         $user = $request->user();
         $marketingId = $filters['assigned_user_id'] ?? null;
-
         if (! $access->canManageTeam($user)) {
-            $marketingId = $user->id;
+            $marketingId = null;
         }
 
         $leads = MarketingLead::query()
@@ -50,7 +49,6 @@ class MarketingLeadReportController extends Controller
                         ->orWhereHas('bookings', fn (Builder $bookings) => $bookings->whereHas('lot.block', fn (Builder $blocks) => $blocks->where('property_id', $filters['property_id'])));
                 });
             });
-        $access->scopeLeads($leads, $user);
 
         $leadIds = (clone $leads)->select('marketing_leads.id');
         $totalLeads = (clone $leads)->count();

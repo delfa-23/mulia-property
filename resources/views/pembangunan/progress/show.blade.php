@@ -44,7 +44,6 @@
                 stageName: '',
                 stageWeight: 0,
                 progress: 0,
-                realization: 0,
                 notes: '',
 
                 formatRupiah(value) {
@@ -63,7 +62,6 @@
                     this.stageName = button.dataset.stageName;
                     this.stageWeight = Number(button.dataset.stageWeight);
                     this.progress = Number(button.dataset.progress);
-                    this.realization = this.formatRupiah(button.dataset.realization);
                     this.notes = button.dataset.notes;
                     this.modalOpen = true;
                 },
@@ -152,6 +150,32 @@
                         <p class="mt-1 text-xl font-bold text-gray-900 dark:text-white">
                             Rp {{ number_format($realisasi, 0, ',', '.') }}
                         </p>
+
+                        @if($isAdmin)
+                            <form
+                                method="POST"
+                                action="{{ route('pembangunan.progress.realization.update', [$property, $block, $lot]) }}"
+                                class="mt-3 space-y-2"
+                            >
+                                @csrf
+                                @method('PUT')
+                                <input
+                                    type="text"
+                                    name="construction_realization"
+                                    value="{{ number_format($realisasi, 0, ',', '.') }}"
+                                    data-currency-input
+                                    data-currency-min="0"
+                                    required
+                                    class="block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                                >
+                                <button
+                                    type="submit"
+                                    style="display:block;width:100%;min-height:42px;background-color:#15803d;color:#ffffff;border:0;border-radius:8px;font-size:14px;font-weight:700;padding:10px 16px"
+                                >
+                                    Simpan
+                                </button>
+                            </form>
+                        @endif
                     </div>
 
                     <div>
@@ -192,11 +216,19 @@
 
             </div>
 
-            <div class="mt-5 h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-zinc-700">
+            <div
+                role="progressbar"
+                aria-label="Progress fisik"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="{{ $progressFisik }}"
+                class="mt-5 h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-zinc-700"
+                style="height: 12px; background-color: #e5e7eb"
+            >
 
                 <div
                     class="h-full rounded-full bg-red-600"
-                    style="width: {{ min(100, max(0, $progressFisik)) }}%"
+                    style="width: {{ $progressFisik }}%; background-color: #dc2626"
                 ></div>
 
             </div>
@@ -227,7 +259,6 @@
                             <th class="bg-green-50 px-6 py-3 text-green-800">Bobot</th>
                             <th class="bg-orange-50 px-6 py-3 text-orange-800">Progress</th>
                             <th class="bg-red-50 px-6 py-3 text-red-800">Bobot Hasil</th>
-                            <th class="px-6 py-3">Realisasi</th>
                             <th class="px-6 py-3">Catatan</th>
                             <th class="px-6 py-3">Terakhir Update</th>
                             <th class="px-6 py-3 text-right">Aksi</th>
@@ -274,10 +305,6 @@
                                     {{ number_format($weightedProgress, 2) }}%
                                 </td>
 
-                                <td class="bg-green-50/60 px-6 py-4 whitespace-nowrap">
-                                    Rp {{ number_format((float) ($progressData?->realization ?? 0), 0, ',', '.') }}
-                                </td>
-
                                 <td class="px-6 py-4 text-sm text-zinc-600">
                                     {{ $progressData?->notes ?: '-' }}
                                 </td>
@@ -299,7 +326,6 @@
                                         data-stage-name="{{ $stage->name }}"
                                         data-stage-weight="{{ $stage->max_progress }}"
                                         data-progress="{{ $progressData?->progress ?? 0 }}"
-                                        data-realization="{{ $progressData?->realization ?? 0 }}"
                                         data-notes="{{ $progressData?->notes ?? '' }}"
                                         class="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
                                     >
@@ -363,9 +389,6 @@
                             Perubahan
                         </th>
 
-                        <th class="px-4 py-3 text-xs font-semibold uppercase text-zinc-500">
-                            Realisasi
-                        </th>
 
                         <th class="px-4 py-3 text-xs font-semibold uppercase text-zinc-500">
                             Diubah Oleh
@@ -400,12 +423,6 @@
                                 <span class="font-semibold text-zinc-900">
                                     {{ number_format((float) $item->progress, 2) }}%
                                 </span>
-                            </td>
-
-                            <td class="whitespace-nowrap px-4 py-4 text-sm">
-                                Rp {{ number_format((float) ($item->previous_realization ?? 0), 0, ',', '.') }}
-                                →
-                                Rp {{ number_format((float) $item->realization, 0, ',', '.') }}
                             </td>
 
                             <td class="px-4 py-4 text-sm text-zinc-700">
@@ -524,29 +541,6 @@
                     ></textarea>
                 </div>
 
-                <div>
-                    <label
-                        for="modal-realization"
-                        class="mb-2 block text-sm font-medium"
-                    >
-                        Realisasi Pengeluaran (Rp)
-                    </label>
-
-                    <input
-                        id="modal-realization"
-                        type="text"
-                        name="realization"
-                        inputmode="decimal"
-                        x-model="realization"
-                        data-currency-input
-                        data-currency-min="0"
-                        required
-                        class="w-full rounded-lg border border-green-300 bg-green-50 px-4 py-2 dark:border-green-700 dark:bg-zinc-800"
-                    >
-                    <p class="mt-1 text-xs text-zinc-500">
-                        Nominal akan dikirim sebagai angka dan disimpan tanpa format.
-                    </p>
-                </div>
                 @endif
 
             </div>

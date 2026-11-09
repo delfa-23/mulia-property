@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Services\ActivityLogger;
 use App\Services\BookingPaymentSummaryService;
+use App\Services\MarketingLeadAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,12 +18,14 @@ class PaymentArchiveController extends Controller
         Booking $booking,
         ActivityLogger $activityLogger,
         BookingPaymentSummaryService $paymentSummaryService,
+        MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
-        DB::transaction(function () use ($request, $booking, $activityLogger, $paymentSummaryService): void {
+        DB::transaction(function () use ($request, $booking, $activityLogger, $paymentSummaryService, $leadAccess): void {
             $lockedBooking = Booking::query()
                 ->with(['lot', 'payments'])
                 ->lockForUpdate()
                 ->findOrFail($booking->id);
+            $leadAccess->authorizeBooking($request->user(), $lockedBooking);
 
             abort_if($lockedBooking->payment_archived_at !== null, 422, 'Pembayaran booking ini sudah diarsipkan.');
             abort_if(
@@ -51,11 +54,13 @@ class PaymentArchiveController extends Controller
         Request $request,
         Booking $booking,
         ActivityLogger $activityLogger,
+        MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
-        DB::transaction(function () use ($request, $booking, $activityLogger): void {
+        DB::transaction(function () use ($request, $booking, $activityLogger, $leadAccess): void {
             $lockedBooking = Booking::query()
                 ->lockForUpdate()
                 ->findOrFail($booking->id);
+            $leadAccess->authorizeBooking($request->user(), $lockedBooking);
 
             abort_if($lockedBooking->payment_archived_at === null, 422, 'Pembayaran booking ini belum diarsipkan.');
 

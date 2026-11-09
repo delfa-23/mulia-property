@@ -111,7 +111,7 @@
 
                                 $statusLabels = [
                                     'available' => 'Tersedia',
-                                    'blocked' => 'Blocked',
+                                    'blocked' => 'Belum Boleh Dijual',
                                     'booked' => 'Booking',
                                     'process' => 'Proses',
                                     'akad' => 'Akad',

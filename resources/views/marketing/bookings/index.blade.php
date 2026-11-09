@@ -13,6 +13,9 @@
         @if(session('success'))
             <div class="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{{ session('success') }}</div>
         @endif
+        @if(session('document_delete_warning'))
+            <div role="alert" class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">{{ session('document_delete_warning') }}</div>
+        @endif
 
         <form method="GET" class="rounded-xl border border-zinc-200 bg-white p-4">
             <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
@@ -144,8 +147,8 @@
                                         <a href="{{ route('marketing.bookings.show', $booking) }}" class="text-zinc-700" wire:navigate>Detail</a>
                                         <a href="{{ route('marketing.bookings.edit', $booking) }}" class="text-blue-600" wire:navigate>Edit Booking</a>
                                         <a href="{{ route('marketing.bookings.documents.edit', $booking) }}" class="text-blue-600" wire:navigate>Edit Berkas</a>
-                                        @if($booking->status === 'cancelled')
-                                            <form method="POST" action="{{ route('marketing.bookings.destroy', $booking) }}" onsubmit="return confirm('Hapus permanen booking yang cancelled ini?')">
+                                        @if(auth()->user()->isAdmin())
+                                            <form method="POST" action="{{ route('marketing.bookings.destroy', $booking) }}" onsubmit="return confirm('Hapus permanen booking ini?')">
                                                 @csrf
                                                 @method('DELETE')
                                                 <button type="submit" class="text-red-600">Hapus</button>

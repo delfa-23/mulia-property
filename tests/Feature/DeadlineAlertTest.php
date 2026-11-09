@@ -3,15 +3,18 @@
 use App\Models\AkadSchedule;
 use App\Models\Block;
 use App\Models\Booking;
+use App\Models\BookingPayment;
 use App\Models\Customer;
 use App\Models\Division;
 use App\Models\Lot;
 use App\Models\Property;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 test('booking pages alert on expired active blocking and akad deadlines only', function () {
     $this->travelTo(Carbon::parse('2026-10-06 12:00:00'));
+    Cache::put('booking-expiry-request-last-run', true, 55);
     $marketingDivision = Division::create([
         'name' => 'Marketing',
         'slug' => 'marketing',
@@ -155,29 +158,88 @@ test('expired bookings are cancelled automatically and their lots are released',
         ->expectsOutput('1 booking expired.')
         ->assertSuccessful();
 
-    $this->assertDatabaseHas('bookings', ['id' => $expiredBooking->id, 'status' => 'cancelled']);
+    $this->assertDatabaseMissing('bookings', ['id' => $expiredBooking->id]);
     $this->assertDatabaseHas('lots', ['id' => $expiredLot->id, 'status' => 'available']);
     $this->assertDatabaseHas('bookings', ['id' => $activeBooking->id, 'status' => 'process']);
     $this->assertDatabaseHas('lots', ['id' => $activeLot->id, 'status' => 'process']);
-    $this->assertDatabaseHas('booking_histories', [
-        'booking_id' => $expiredBooking->id,
-        'from_status' => 'booking',
-        'to_status' => 'cancelled',
-    ]);
     $this->assertDatabaseHas('alerts', [
         'lot_id' => $expiredLot->id,
         'type' => 'booking_expired',
     ]);
     $this->assertDatabaseHas('activity_logs', [
-        'action' => 'booking.auto_cancelled',
+        'action' => 'booking.auto_deleted',
         'subject_type' => Booking::class,
         'subject_id' => $expiredBooking->id,
     ]);
 
-    $this->actingAs($marketingUser)
-        ->get(route('marketing.bookings.index'))
-        ->assertSee('Booking otomatis dibatalkan karena batas booking terlewati');
+});
 
-    $this->get(route('marketing.bookings.show', $expiredBooking))
-        ->assertSee('Booking otomatis dibatalkan karena batas booking terlewati');
+test('approved payments for a zero akad fee do not prevent booking expiry', function () {
+    $this->travelTo(Carbon::parse('2026-10-06 12:00:00'));
+    $property = Property::create(['name' => 'Perumahan Akad Nol']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => Customer::create(['name' => 'Pembeli Akad Nol'])->id,
+        'booking_date' => '2026-10-01',
+        'blocking_until' => '2026-10-05 12:00:00',
+        'akad_fee' => 0,
+        'status' => 'booking',
+    ]);
+    BookingPayment::create([
+        'booking_id' => $booking->id,
+        'stage' => 'akad_fee',
+        'amount' => 2500000,
+        'paid_at' => now(),
+        'approval_status' => 'approved',
+    ]);
+
+    $this->artisan('bookings:expire')
+        ->expectsOutput('1 booking expired.')
+        ->assertSuccessful();
+
+    $this->assertDatabaseMissing('bookings', ['id' => $booking->id]);
+    $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'available']);
+});
+
+test('dashboard requests expire overdue unpaid bookings when the scheduler is unavailable', function () {
+    $this->travelTo(Carbon::parse('2026-10-06 12:00:00'));
+    Cache::forget('booking-expiry-request-last-run');
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Auto Cancel Request']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => Customer::create(['name' => 'Pembeli Lewat Request'])->id,
+        'booking_date' => '2026-10-01',
+        'blocking_until' => '2026-10-05 12:00:00',
+        'status' => 'booking',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('marketing.dashboard'))
+        ->assertOk();
+
+    $this->assertDatabaseMissing('bookings', ['id' => $booking->id]);
+    $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'available']);
 });

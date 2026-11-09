@@ -73,9 +73,19 @@ class MidtransPaymentService
                     return $existingOrder;
                 }
 
-                throw ValidationException::withMessages([
-                    'amount' => 'Masih ada transaksi Midtrans yang menunggu pembayaran untuk tahap ini.',
-                ]);
+                if ($stage === 'akad_fee') {
+                    $existingOrder->update([
+                        'status' => 'cancelled',
+                        'snap_token' => null,
+                        'redirect_url' => null,
+                    ]);
+                } else {
+                    throw ValidationException::withMessages([
+                        'amount' => 'Masih ada transaksi Midtrans yang menunggu pembayaran untuk tahap ini.',
+                    ]);
+                }
+
+                $existingOrder = null;
             }
 
             return BookingPaymentOrder::query()->create([
@@ -339,6 +349,8 @@ class MidtransPaymentService
                         'reference' => $lockedOrder->order_id,
                         'notes' => 'Pembayaran Midtrans terkonfirmasi.',
                         'recorded_by' => $lockedOrder->created_by,
+                        'payment_channel' => 'midtrans',
+                        'approval_status' => 'approved',
                     ],
                 );
                 $this->financeSync->sync($payment);

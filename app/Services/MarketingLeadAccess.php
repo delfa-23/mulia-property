@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Booking;
 use App\Models\Division;
 use App\Models\MarketingLead;
 use App\Models\User;
@@ -10,6 +11,23 @@ use Illuminate\Validation\Rule;
 
 class MarketingLeadAccess
 {
+    /** @param Builder<Booking> $query
+     * @return Builder<Booking>
+     */
+    public function scopeBookings(Builder $query, User $user): Builder
+    {
+        if ($this->canManageTeam($user)) {
+            return $query;
+        }
+
+        return $query->where('created_by', $user->id);
+    }
+
+    public function authorizeBooking(User $user, Booking $booking): void
+    {
+        abort_unless($this->scopeBookings(Booking::query()->whereKey($booking->id), $user)->exists(), 404);
+    }
+
     /** @param Builder<MarketingLead> $query
      * @return Builder<MarketingLead>
      */
@@ -19,42 +37,33 @@ class MarketingLeadAccess
             return $query;
         }
 
-        return $query->where(function (Builder $query) use ($user): void {
-            $query->where('assigned_user_id', $user->id)
-                ->orWhereNull('assigned_user_id');
-        });
+        return $query->where('created_by', $user->id);
     }
 
     public function canManageTeam(User $user): bool
     {
-        return $user->isAdmin() || $user->role === 'tl_marketing';
+        return $user->isAdmin();
     }
 
     public function authorizeLead(User $user, MarketingLead $lead): void
     {
-        abort_unless($this->canAccessLead($user, $lead), 403);
+        abort_unless($this->canAccessLead($user, $lead), 404);
     }
 
     public function authorizeLeadOwner(User $user, MarketingLead $lead): void
     {
-        abort_unless($this->canManageLead($user, $lead), 403);
+        abort_unless($this->canManageLead($user, $lead), 404);
     }
 
     public function canManageLead(User $user, MarketingLead $lead): bool
     {
         return $this->canManageTeam($user)
-            || $lead->assigned_user_id === null
-            || (int) $lead->assigned_user_id === (int) $user->id;
+            || (int) $lead->created_by === (int) $user->id;
     }
 
     public function canAccessLead(User $user, MarketingLead $lead): bool
     {
-        if ($this->canManageLead($user, $lead)) {
-            return true;
-        }
-
-        return $lead->surveys()->where('assigned_user_id', $user->id)->exists()
-            || $lead->followUps()->where('assigned_user_id', $user->id)->exists();
+        return $this->canManageLead($user, $lead);
     }
 
     public function assignedUserId(User $user, mixed $requestedId): ?int

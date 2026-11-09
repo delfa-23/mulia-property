@@ -12,6 +12,7 @@ use App\Models\PemberkasanDocument;
 use App\Models\Property;
 use App\Models\Sp3;
 use App\Models\User;
+use App\Services\MarketingLeadAccess;
 use App\Services\PemberkasanDocumentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -68,8 +69,13 @@ class BookingController extends Controller
         ]);
     }
 
-    public function uploadDocument(Request $request, Booking $booking): RedirectResponse
-    {
+    public function uploadDocument(
+        Request $request,
+        Booking $booking,
+        MarketingLeadAccess $leadAccess,
+    ): RedirectResponse {
+        $this->authorizeMarketingBooking($request, $booking, $leadAccess);
+
         $validated = $request->validate([
             'document_type' => ['required', Rule::in(PemberkasanDocumentService::BOOKING_DOCUMENT_TYPES)],
             'document_category' => ['nullable', Rule::in(['standard', 'other'])],
@@ -112,8 +118,15 @@ class BookingController extends Controller
         }
     }
 
-    public function retryUpload(Request $request, PemberkasanDocument $pemberkasanDocument): RedirectResponse
-    {
+    public function retryUpload(
+        Request $request,
+        PemberkasanDocument $pemberkasanDocument,
+        MarketingLeadAccess $leadAccess,
+    ): RedirectResponse {
+        $booking = $pemberkasanDocument->booking;
+        abort_unless($booking instanceof Booking, 404);
+        $this->authorizeMarketingBooking($request, $booking, $leadAccess);
+
         try {
             $document = $this->pemberkasanDocumentService->retryUpload($pemberkasanDocument, $request->user());
 
@@ -427,5 +440,15 @@ class BookingController extends Controller
         }
 
         return 'booking';
+    }
+
+    private function authorizeMarketingBooking(
+        Request $request,
+        Booking $booking,
+        MarketingLeadAccess $leadAccess,
+    ): void {
+        if ($request->user()->isAssignedToDivision('marketing')) {
+            $leadAccess->authorizeBooking($request->user(), $booking);
+        }
     }
 }

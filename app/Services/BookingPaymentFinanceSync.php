@@ -10,6 +10,10 @@ class BookingPaymentFinanceSync
 {
     public function sync(BookingPayment $payment): FinanceCashFlow
     {
+        if ($payment->approval_status !== 'approved') {
+            throw new \InvalidArgumentException('Pembayaran yang belum disetujui tidak dapat masuk laporan finance.');
+        }
+
         $payment->loadMissing('booking.lot.block');
         $booking = $payment->booking;
         $stageLabel = match ($payment->stage) {

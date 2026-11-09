@@ -25,6 +25,13 @@
                         <button class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white">Pulihkan prospek</button>
                     </form>
                 @endif
+                @if(auth()->user()->isAdmin())
+                    <form method="POST" action="{{ route('marketing.leads.force-destroy', $lead) }}" onsubmit="return confirm('Hapus prospek ini secara permanen? Tindakan ini tidak dapat dibatalkan.')">
+                        @csrf
+                        @method('DELETE')
+                        <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white">Hapus permanen</button>
+                    </form>
+                @endif
             </div>
         </div>
 

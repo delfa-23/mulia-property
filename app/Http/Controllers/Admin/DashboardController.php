@@ -98,7 +98,8 @@ class DashboardController extends Controller
             ->select('lots.id')
             ->selectRaw('COALESCE(SUM(construction_progress.progress * construction_stages.max_progress / 100), 0) as physical_progress')
             ->groupBy('lots.id')
-            ->get();
+            ->get()
+            ->map(fn (object $lotProgress): float => min(100, max(0, (float) $lotProgress->physical_progress)));
 
         $stats = [
 
@@ -194,7 +195,7 @@ class DashboardController extends Controller
                 ]
             )->count(),
 
-            'physical_progress' => round((float) $physicalProgressByLot->avg('physical_progress'), 2),
+            'physical_progress' => round((float) $physicalProgressByLot->avg(), 2),
             'facility_progress' => round((float) CommonFacility::query()
                 ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
                 ->get()

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Marketing;
 use App\Exceptions\MidtransGatewayException;
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
+use App\Services\MarketingLeadAccess;
 use App\Services\MidtransPaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,8 +13,19 @@ use Illuminate\Validation\Rule;
 
 class MidtransBookingPaymentController extends Controller
 {
-    public function store(Request $request, Booking $booking, MidtransPaymentService $midtrans): RedirectResponse
-    {
+    public function store(
+        Request $request,
+        Booking $booking,
+        MidtransPaymentService $midtrans,
+        MarketingLeadAccess $leadAccess,
+    ): RedirectResponse {
+        $leadAccess->authorizeBooking($request->user(), $booking);
+
+        if ($request->filled('amount')) {
+            $request->merge([
+                'amount' => $this->normalizeCurrencyInput((string) $request->input('amount')),
+            ]);
+        }
         $validated = $request->validate([
             'stage' => ['required', Rule::in(['dp', 'akad_fee'])],
             'amount' => ['required', 'integer', 'min:1', 'max:9999999999999'],
@@ -36,13 +48,32 @@ class MidtransBookingPaymentController extends Controller
         return redirect()->away($order->redirect_url);
     }
 
-    public function refresh(Booking $booking, MidtransPaymentService $midtrans): RedirectResponse
+    private function normalizeCurrencyInput(string $value): string
     {
+        $digits = preg_replace('/[^\d]/', '', $value);
+
+        return $digits === null || $digits === '' ? '' : ltrim($digits, '0');
+    }
+
+    public function refresh(
+        Request $request,
+        Booking $booking,
+        MidtransPaymentService $midtrans,
+        MarketingLeadAccess $leadAccess,
+    ): RedirectResponse {
+        $leadAccess->authorizeBooking($request->user(), $booking);
+
         return $this->refreshPaymentStatus($booking, $midtrans);
     }
 
-    public function returnFromCheckout(Booking $booking, MidtransPaymentService $midtrans): RedirectResponse
-    {
+    public function returnFromCheckout(
+        Request $request,
+        Booking $booking,
+        MidtransPaymentService $midtrans,
+        MarketingLeadAccess $leadAccess,
+    ): RedirectResponse {
+        $leadAccess->authorizeBooking($request->user(), $booking);
+
         return $this->refreshPaymentStatus($booking, $midtrans);
     }
 

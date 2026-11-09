@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\SitePlanAreaController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AlertNotificationController;
 use App\Http\Controllers\Finance\FinanceCashPositionController;
+use App\Http\Controllers\Finance\PaymentReportController;
 use App\Http\Controllers\GoogleDriveController;
 use App\Http\Controllers\Marketing\BookingController as MarketingBookingController;
 use App\Http\Controllers\Marketing\CustomerController as MarketingCustomerController;
@@ -129,7 +130,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 Route::get('/admin', [DashboardController::class, 'index'])
-    ->middleware(['auth', 'verified', 'role:admin'])
+    ->middleware(['auth', 'verified', 'role:admin', 'expire.bookings'])
     ->name('admin.dashboard');
 
 Route::middleware(['auth', 'verified', 'role:admin'])
@@ -137,6 +138,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->name('admin.')
     ->group(function () {
         Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
+        Route::get('/payment-approvals', [MarketingBookingController::class, 'paymentApprovals'])
+            ->name('payments.approvals');
+        Route::post('/payment-approvals/{payment}/approve', [MarketingBookingController::class, 'approvePayment'])
+            ->name('payments.approve');
+        Route::post('/payment-approvals/{payment}/reject', [MarketingBookingController::class, 'rejectPayment'])
+            ->name('payments.reject');
         Route::resource('users', UserController::class)
             ->except(['show']);
 
@@ -198,16 +205,6 @@ Route::prefix('pembangunan')
         Route::get('/dashboard', [PembangunanDashboardController::class, 'index'])
             ->name('dashboard');
 
-        Route::get(
-            '/properties/{property}/blocks/{block}/lots/{lot}/edit',
-            [LotController::class, 'edit']
-        )->name('properties.blocks.lots.edit');
-
-        Route::put(
-            '/properties/{property}/blocks/{block}/lots/{lot}',
-            [LotController::class, 'update']
-        )->name('properties.blocks.lots.update');
-
         Route::get('/properties', [PropertyOverviewController::class, 'index'])
             ->name('properties.index');
 
@@ -240,6 +237,10 @@ Route::prefix('pembangunan')
             '/properties/{property}/blocks/{block}/lots/{lot}/progress/{constructionProgress}',
             [ProgressController::class, 'update']
         )->name('progress.records.update');
+        Route::put(
+            '/properties/{property}/blocks/{block}/lots/{lot}/progress-realization',
+            [ProgressController::class, 'updateRealization']
+        )->name('progress.realization.update');
 
         Route::delete(
             '/properties/{property}/blocks/{block}/lots/{lot}/progress/{constructionProgress}',
@@ -277,14 +278,30 @@ Route::prefix('keuangan')
         Route::delete('/cash-flows/{cashFlow}', [FinanceCashPositionController::class, 'destroyCashFlow'])->name('cash-flows.destroy');
     });
 
+Route::prefix('keuangan')
+    ->middleware(['auth', 'verified'])
+    ->name('keuangan.')
+    ->group(function () {
+        Route::get('/payment-reports', [PaymentReportController::class, 'index'])->name('payment-reports.index');
+        Route::get('/payment-reports/{booking}', [PaymentReportController::class, 'show'])->name('payment-reports.show');
+    });
+
 Route::prefix('marketing')
     ->middleware(['auth', 'verified', 'division:marketing'])
     ->name('marketing.')
     ->group(function () {
-        Route::get('/dashboard', [MarketingDashboardController::class, 'index'])->name('dashboard');
+        Route::get('/dashboard', [MarketingDashboardController::class, 'index'])
+            ->middleware('expire.bookings')
+            ->name('dashboard');
         Route::get('/payments', [MarketingPaymentController::class, 'index'])->name('payments.index');
         Route::post('/payments/{booking}/archive', [MarketingPaymentArchiveController::class, 'store'])
             ->name('payments.archive.store');
+        Route::put('/payments/{booking}/unpaid-reason', [MarketingPaymentController::class, 'updateUnpaidReason'])
+            ->name('payments.unpaid-reason.update');
+        Route::post('/payments/{booking}/unpaid-reason/approve', [MarketingPaymentController::class, 'approveUnpaidReason'])
+            ->middleware('role:admin')->name('payments.unpaid-reason.approve');
+        Route::post('/payments/{booking}/unpaid-reason/reject', [MarketingPaymentController::class, 'rejectUnpaidReason'])
+            ->middleware('role:admin')->name('payments.unpaid-reason.reject');
         Route::delete('/payments/{booking}/archive', [MarketingPaymentArchiveController::class, 'destroy'])
             ->name('payments.archive.destroy');
         Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
@@ -295,6 +312,7 @@ Route::prefix('marketing')
         Route::resource('leads', MarketingLeadController::class)->except(['show']);
         Route::get('/leads/{lead}', [MarketingLeadController::class, 'show'])->name('leads.show');
         Route::post('/leads/{lead}/restore', [MarketingLeadController::class, 'restore'])->name('leads.restore');
+        Route::delete('/leads/{lead}/permanent', [MarketingLeadController::class, 'forceDestroy'])->name('leads.force-destroy');
         Route::post('/leads/{lead}/calls', [MarketingLeadActivityController::class, 'storeCall'])->name('leads.calls.store');
         Route::post('/leads/{lead}/surveys', [MarketingLeadActivityController::class, 'storeSurvey'])->name('leads.surveys.store');
         Route::put('/leads/{lead}/surveys/{survey}', [MarketingLeadActivityController::class, 'updateSurvey'])->name('leads.surveys.update');

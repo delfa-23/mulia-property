@@ -10,13 +10,14 @@ use App\Models\ExpenseTransaction;
 use App\Models\Lot;
 use App\Models\Property;
 use App\Models\Sales;
+use App\Services\MarketingLeadAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, MarketingLeadAccess $leadAccess): View
     {
         $validated = $request->validate([
             'property_id' => ['nullable', 'integer', 'exists:properties,id'],
@@ -106,8 +107,17 @@ class DashboardController extends Controller
             ->values();
         $monthlyBookingChartMax = max(1, (int) $monthlyBookingChart->max('bookings'));
 
+        $visibleBookingDetails = fn ($query) => $query
+            ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
+            ->when(
+                ! $leadAccess->canManageTeam($request->user()),
+                fn ($query) => $query->where('created_by', $request->user()->id),
+            )
+            ->with(['customer', 'sales'])
+            ->latest('id');
+
         $recentBookings = $filterBookingsByProperty(Booking::query())
-            ->with(['lot.block.property', 'customer', 'sales'])
+            ->with('lot.block.property')
             ->latest()
             ->limit(8)
             ->get();
@@ -163,10 +173,7 @@ class DashboardController extends Controller
             ? Lot::query()
                 ->with([
                     'block',
-                    'bookings' => fn ($query) => $query
-                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
-                        ->with(['customer', 'sales'])
-                        ->latest('id'),
+                    'bookings' => $visibleBookingDetails,
                 ])
                 ->whereHas('block', fn ($query) => $query->where('property_id', $propertyId))
                 ->orderBy('lot_number')
@@ -177,10 +184,7 @@ class DashboardController extends Controller
                 ->where('site_plan_path', $selectedProperty->site_plan_path)
                 ->with([
                     'lot.block',
-                    'lot.bookings' => fn ($query) => $query
-                        ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
-                        ->with(['customer', 'sales'])
-                        ->latest('id'),
+                    'lot.bookings' => $visibleBookingDetails,
                 ])
                 ->orderBy('id')
                 ->get()

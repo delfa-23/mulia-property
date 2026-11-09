@@ -3,15 +3,215 @@
 use App\Models\Block;
 use App\Models\Booking;
 use App\Models\BookingPayment;
+use App\Models\BookingPaymentOrder;
 use App\Models\Customer;
 use App\Models\Division;
 use App\Models\Lot;
+use App\Models\MarketingLead;
 use App\Models\PemberkasanDocument;
 use App\Models\Property;
 use App\Models\User;
 use App\Services\GoogleDriveService;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+
+it('shows marketing staff only bookings they created, not bookings created by other marketers', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $staff = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $otherStaff = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Booking Scope']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $ownLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $otherLot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '02',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $ownLead = MarketingLead::create([
+        'name' => 'Prospek Milik Saya',
+        'date_received' => '2026-10-01',
+        'assigned_user_id' => $staff->id,
+        'created_by' => $staff->id,
+        'category' => 'Booking',
+        'source' => 'Instagram / FB',
+    ]);
+    $otherLead = MarketingLead::create([
+        'name' => 'Prospek Marketing Lain',
+        'date_received' => '2026-10-01',
+        'assigned_user_id' => $otherStaff->id,
+        'created_by' => $otherStaff->id,
+        'category' => 'Booking',
+        'source' => 'Instagram / FB',
+    ]);
+    $legacyBooking = Booking::create([
+        'lot_id' => Lot::create([
+            'block_id' => $block->id,
+            'lot_number' => '03',
+            'house_price' => 350000000,
+            'status' => 'booked',
+        ])->id,
+        'customer_id' => Customer::create(['name' => 'Customer Tanpa Owner'])->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+    $ownBooking = Booking::create([
+        'lot_id' => $ownLot->id,
+        'customer_id' => Customer::create(['name' => 'Customer Milik Saya'])->id,
+        'lead_id' => $ownLead->id,
+        'created_by' => $staff->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+    $otherBooking = Booking::create([
+        'lot_id' => $otherLot->id,
+        'customer_id' => Customer::create(['name' => 'Customer Marketing Lain'])->id,
+        'lead_id' => $otherLead->id,
+        'created_by' => $otherStaff->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+
+    $bookingIndex = $this->actingAs($staff)
+        ->get(route('marketing.bookings.index'))
+        ->assertSee('Customer Milik Saya')
+        ->assertDontSee('Customer Marketing Lain')
+        ->assertDontSee('Customer Tanpa Owner');
+
+    $this->actingAs($staff)
+        ->get(route('marketing.lots.index'))
+        ->assertSee('Customer Milik Saya')
+        ->assertDontSee('Customer Marketing Lain')
+        ->assertDontSee('Customer Tanpa Owner')
+        ->assertSee('Booked');
+
+    $this->actingAs($staff)
+        ->get(route('marketing.bookings.show', $otherBooking))
+        ->assertNotFound();
+    $this->put(route('marketing.bookings.update', $otherBooking), [])
+        ->assertNotFound();
+    $this->put(route('marketing.payments.unpaid-reason.update', $otherBooking), [])
+        ->assertNotFound();
+    $this->post(route('marketing.bookings.payments.midtrans.store', $otherBooking), [])
+        ->assertNotFound();
+    $this->post(route('marketing.bookings.documents.store', $otherBooking), [])
+        ->assertNotFound();
+    $this->actingAs(User::factory()->create([
+        'role' => 'tl_marketing',
+        'division_id' => $division->id,
+    ]))
+        ->get(route('marketing.bookings.show', $otherBooking))
+        ->assertNotFound();
+
+    $this->actingAs($staff)
+        ->get(route('marketing.bookings.create'))
+        ->assertDontSee('Prospek Marketing Lain');
+
+    $this->assertModelExists($ownBooking);
+    $this->assertModelExists($legacyBooking);
+
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $division->id,
+    ]);
+    $this->actingAs($admin)
+        ->get(route('marketing.bookings.index'))
+        ->assertSee('Customer Milik Saya')
+        ->assertSee('Customer Marketing Lain')
+        ->assertSee('Customer Tanpa Owner');
+
+    $this->actingAs($admin)
+        ->get(route('marketing.lots.index'))
+        ->assertSee('Customer Milik Saya')
+        ->assertSee('Customer Marketing Lain')
+        ->assertSee('Customer Tanpa Owner');
+});
+
+it('allows an admin to delete a booking that is not cancelled', function () {
+    Storage::fake('local');
+
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Booking Aktif']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Booking Aktif']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+
+    $this->actingAs($admin)
+        ->delete(route('marketing.bookings.destroy', $booking))
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Booking berhasil dihapus.');
+
+    $this->assertDatabaseMissing('bookings', ['id' => $booking->id]);
+    $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'available']);
+});
+
+it('prevents non-admin users from deleting bookings', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $staff = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Booking Terlarang']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Booking Terlarang']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+
+    $this->actingAs($staff)
+        ->delete(route('marketing.bookings.destroy', $booking))
+        ->assertForbidden();
+
+    $this->assertModelExists($booking);
+});
 
 it('deletes only the selected booking customer files from Google Drive when the cancelled booking is deleted', function () {
     Storage::fake('local');
@@ -22,7 +222,7 @@ it('deletes only the selected booking customer files from Google Drive when the 
         'is_active' => true,
     ]);
     $user = User::factory()->create([
-        'role' => 'staff_marketing',
+        'role' => 'admin',
         'division_id' => $division->id,
     ]);
     $property = Property::create(['name' => 'Perumahan Hapus Booking']);
@@ -89,7 +289,7 @@ it('deletes only the selected booking customer files from Google Drive when the 
         ->from(route('marketing.bookings.index'))
         ->delete(route('marketing.bookings.destroy', $booking))
         ->assertRedirect(route('marketing.bookings.index'))
-        ->assertSessionHas('success', 'Booking cancelled berhasil dihapus.');
+        ->assertSessionHas('success', 'Booking berhasil dihapus.');
 
     $this->assertDatabaseMissing('bookings', ['id' => $booking->id]);
     $this->assertDatabaseMissing('pemberkasan_documents', ['id' => $document->id]);
@@ -100,14 +300,14 @@ it('deletes only the selected booking customer files from Google Drive when the 
     Storage::disk('local')->assertExists('pemberkasan/documents/ktp-lain.pdf');
 });
 
-it('keeps a cancelled booking when deleting its Google Drive documents fails', function () {
+it('deletes a cancelled booking even when deleting its Google Drive documents fails', function () {
     $division = Division::create([
         'name' => 'Marketing',
         'slug' => 'marketing',
         'is_active' => true,
     ]);
     $user = User::factory()->create([
-        'role' => 'staff_marketing',
+        'role' => 'admin',
         'division_id' => $division->id,
     ]);
     $property = Property::create(['name' => 'Perumahan Gagal Hapus']);
@@ -150,21 +350,22 @@ it('keeps a cancelled booking when deleting its Google Drive documents fails', f
         ->from(route('marketing.bookings.index'))
         ->delete(route('marketing.bookings.destroy', $booking))
         ->assertRedirect(route('marketing.bookings.index'))
-        ->assertSessionHasErrors(['booking' => 'Google Drive deletion failed.']);
+        ->assertSessionHas('success', 'Booking berhasil dihapus.')
+        ->assertSessionHas('document_delete_warning', 'Google Drive deletion failed.');
 
-    $this->assertModelExists($booking);
-    $this->assertModelExists($document);
-    $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'booked']);
+    $this->assertDatabaseMissing('bookings', ['id' => $booking->id]);
+    $this->assertDatabaseMissing('pemberkasan_documents', ['id' => $document->id]);
+    $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'available']);
 });
 
-it('does not delete a cancelled booking with recorded payments', function () {
+it('allows an admin to delete a booking with recorded payments', function () {
     $division = Division::create([
         'name' => 'Marketing',
         'slug' => 'marketing',
         'is_active' => true,
     ]);
     $user = User::factory()->create([
-        'role' => 'staff_marketing',
+        'role' => 'admin',
         'division_id' => $division->id,
     ]);
     $property = Property::create(['name' => 'Perumahan Riwayat Pembayaran']);
@@ -193,11 +394,215 @@ it('does not delete a cancelled booking with recorded payments', function () {
 
     $this->actingAs($user)
         ->delete(route('marketing.bookings.destroy', $booking))
-        ->assertUnprocessable()
-        ->assertSee('Booking tidak dapat dihapus karena memiliki riwayat pembayaran.');
+        ->assertRedirect()
+        ->assertSessionHas('success', 'Booking berhasil dihapus.');
 
-    $this->assertModelExists($booking);
-    $this->assertModelExists($payment);
+    $this->assertDatabaseMissing('bookings', ['id' => $booking->id]);
+    $this->assertDatabaseMissing('booking_payments', ['id' => $payment->id]);
+});
+
+it('allows an admin to update akad fee when payments have been recorded', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Admin Akad']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Admin Akad']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'house_price_snapshot' => 350000000,
+        'akad_fee' => 2500000,
+        'status' => 'booking',
+    ]);
+    BookingPayment::create([
+        'booking_id' => $booking->id,
+        'stage' => 'akad_fee',
+        'amount' => 1000000,
+        'paid_at' => now(),
+        'payment_method' => 'Transfer',
+    ]);
+    $pendingOrder = BookingPaymentOrder::create([
+        'booking_id' => $booking->id,
+        'stage' => 'akad_fee',
+        'amount' => 1500000,
+        'order_id' => 'BK'.$booking->id.'-AKAD-OLD',
+        'status' => 'pending',
+        'redirect_url' => 'https://example.com/old-akad-payment',
+    ]);
+
+    $response = $this->actingAs($admin)->put(route('marketing.bookings.update', $booking), [
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_mode' => 'existing',
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'blocking_until' => '2026-12-20 10:00:00',
+        'akad_fee' => '3.000.000',
+        'status' => 'booking',
+    ]);
+
+    $response->assertRedirect(route('marketing.bookings.index'));
+    $this->assertDatabaseHas('bookings', [
+        'id' => $booking->id,
+        'akad_fee' => '3000000.00',
+    ]);
+    $this->assertDatabaseHas('booking_payment_orders', [
+        'id' => $pendingOrder->id,
+        'status' => 'cancelled',
+        'redirect_url' => null,
+    ]);
+
+    $this->put(route('marketing.bookings.update', $booking), [
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'customer_mode' => 'existing',
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'blocking_until' => '2026-12-20 10:00:00',
+        'akad_fee' => 500000,
+        'status' => 'booking',
+    ])->assertSessionHasErrors('akad_paid_amount');
+});
+
+it('persists editable booking fields in an admin update', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Update Lengkap']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 350000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Lama']);
+    $replacementCustomer = Customer::create(['name' => 'Customer Baru']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'blocking_until' => '2026-12-20 10:00:00',
+        'house_price_snapshot' => 350000000,
+        'akad_fee' => 2500000,
+        'status' => 'booking',
+        'notes' => 'Catatan lama',
+    ]);
+
+    $this->actingAs($admin)
+        ->put(route('marketing.bookings.update', $booking), [
+            'property_id' => $property->id,
+            'lot_id' => $lot->id,
+            'customer_mode' => 'existing',
+            'customer_id' => $replacementCustomer->id,
+            'booking_date' => '2026-10-02',
+            'blocking_until' => '2026-12-21 10:00:00',
+            'akad_fee' => '3.000.000',
+            'status' => 'booking',
+            'notes' => 'Catatan diperbarui',
+            'applicant_work_location_url' => 'https://maps.google.com/applicant',
+            'spouse_work_location_url' => 'https://maps.google.com/spouse',
+        ])
+        ->assertRedirect(route('marketing.bookings.index'))
+        ->assertSessionHasNoErrors();
+
+    $this->assertDatabaseHas('bookings', [
+        'id' => $booking->id,
+        'customer_id' => $replacementCustomer->id,
+        'akad_fee' => '3000000.00',
+        'notes' => 'Catatan diperbarui',
+        'applicant_work_location_url' => 'https://maps.google.com/applicant',
+        'spouse_work_location_url' => 'https://maps.google.com/spouse',
+    ]);
+    expect($booking->fresh()->booking_date->format('Y-m-d'))->toBe('2026-10-02');
+});
+
+it('allows an admin to edit a booking with payments and repairs missing payment terms', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Booking Legacy']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '01',
+        'house_price' => 4000000000,
+        'status' => 'booked',
+    ]);
+    $customer = Customer::create(['name' => 'Customer Lama Legacy']);
+    $replacementCustomer = Customer::create(['name' => 'Customer Baru Legacy']);
+    $booking = Booking::create([
+        'lot_id' => $lot->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-07',
+        'blocking_until' => '2026-12-11 15:52:00',
+        'house_price_snapshot' => null,
+        'dp_percentage' => 0,
+        'akad_fee' => 0,
+        'status' => 'booking',
+    ]);
+    BookingPayment::create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 20000,
+        'paid_at' => now(),
+        'payment_channel' => 'manual',
+        'approval_status' => 'approved',
+    ]);
+
+    $this->actingAs($admin)
+        ->put(route('marketing.bookings.update', $booking), [
+            'property_id' => $property->id,
+            'lot_id' => $lot->id,
+            'customer_mode' => 'existing',
+            'customer_id' => $replacementCustomer->id,
+            'booking_date' => '2026-10-08',
+            'blocking_until' => '2026-12-12 15:52:00',
+            'dp_paid_amount' => 20000,
+            'akad_fee' => '10.000.000',
+            'akad_paid_amount' => 0,
+            'status' => 'booking',
+            'notes' => 'Booking berhasil diperbarui',
+        ])
+        ->assertRedirect(route('marketing.bookings.index'))
+        ->assertSessionHasNoErrors();
+
+    $this->assertDatabaseHas('bookings', [
+        'id' => $booking->id,
+        'customer_id' => $replacementCustomer->id,
+        'house_price_snapshot' => '4000000000.00',
+        'dp_percentage' => '100.00',
+        'akad_fee' => '10000000.00',
+        'notes' => 'Booking berhasil diperbarui',
+    ]);
+    expect($booking->fresh()->booking_date->format('Y-m-d'))->toBe('2026-10-08');
+    expect($booking->fresh()->blocking_until->format('Y-m-d H:i:s'))->toBe('2026-12-12 15:52:00');
 });
 
 it('filters marketing bookings by selected customer', function () {
@@ -230,12 +635,14 @@ it('filters marketing bookings by selected customer', function () {
     Booking::create([
         'lot_id' => $filteredLot->id,
         'customer_id' => $filteredCustomer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-01',
         'status' => 'booking',
     ]);
     Booking::create([
         'lot_id' => $otherLot->id,
         'customer_id' => $otherCustomer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-02',
         'status' => 'booking',
     ]);
@@ -262,13 +669,11 @@ it('renders the full-house DP amount input with a Rupiah-formatted akad fee fiel
         ->get(route('marketing.bookings.create'))
         ->assertSee('name="akad_fee"', false)
         ->assertDontSee('name="dp_percentage"', false)
-        ->assertSee('name="dp_paid_amount"', false)
-        ->assertSee('DP Sudah Dibayar (Rp)')
-        ->assertSee('name="akad_paid_amount"', false)
-        ->assertSee('Biaya Akad Sudah Dibayar (Rp)')
+        ->assertDontSee('name="dp_paid_amount"', false)
+        ->assertDontSee('name="akad_paid_amount"', false)
+        ->assertSee('Nominal pembayaran DP dikelola melalui menu Pembayaran')
         ->assertSee('Total pembayaran DP sampai lunas adalah 100% harga rumah')
         ->assertSee('Jika ada pembayaran dari bank, nominalnya ikut dicatat sebagai pembayaran DP.')
-        ->assertSee('dpPaidAmount / housePrice * 100', false)
         ->assertDontSee('DP Wajib')
         ->assertSee('data-currency-input', false)
         ->assertSee('inputmode="decimal"', false)
@@ -301,6 +706,7 @@ it('stores valid Google Maps work-location links and rejects malformed URLs', fu
     $booking = Booking::create([
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-01',
         'blocking_until' => now()->addDay(),
         'status' => 'booking',
@@ -365,8 +771,9 @@ it('shows total DP and customer payment progress in the booking list, edit form,
     $booking = Booking::create([
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-12',
-        'blocking_until' => '2026-10-20 10:00:00',
+        'blocking_until' => '2026-12-20 10:00:00',
         'house_price_snapshot' => 100000000,
         'dp_percentage' => 20,
         'akad_fee' => 2000000,
@@ -413,15 +820,14 @@ it('shows total DP and customer payment progress in the booking list, edit form,
         ->assertSee('100% harga')
         ->assertSee('10.00%')
         ->assertSee('Pembayaran DP (Bank)')
-        ->assertSee('Pencatatan atau pembaruan nominal DP dilakukan melalui')
+        ->assertSee('Kelola di Menu Pembayaran')
         ->assertDontSee('Catat Pembayaran: Pembayaran DP')
         ->assertDontSee('name="stage" value="dp"', false);
 
     $this->get(route('marketing.bookings.edit', $booking))
-        ->assertSee('name="dp_paid_amount"', false)
-        ->assertSee('DP Sudah Dibayar (Rp)')
-        ->assertSee('name="akad_paid_amount"', false)
-        ->assertSee('Biaya Akad Sudah Dibayar (Rp)')
+        ->assertDontSee('name="dp_paid_amount"', false)
+        ->assertDontSee('name="akad_paid_amount"', false)
+        ->assertSee('Nominal pembayaran DP dikelola melalui menu Pembayaran')
         ->assertSee('Progres biaya akad');
 });
 
@@ -537,6 +943,7 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
     $booking = Booking::create([
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
+        'created_by' => $user->id,
         'booking_date' => '2026-10-01',
         'house_price_snapshot' => 100000000,
         'dp_percentage' => 20,
@@ -550,13 +957,13 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
     ];
 
     $this->actingAs($user)
-        ->post($paymentRoute, [...$paymentData, 'stage' => 'bank_settlement', 'amount' => 1])
+        ->post($paymentRoute, [...$paymentData, 'stage' => 'bank_settlement', 'amount' => 1, 'proof' => UploadedFile::fake()->image('bukti.jpg')])
         ->assertSessionHasErrors('stage');
-    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 50000001])
+    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 50000001, 'proof' => UploadedFile::fake()->image('bukti.jpg')])
         ->assertSessionHasErrors('amount');
-    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 1.001])
+    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 1.001, 'proof' => UploadedFile::fake()->image('bukti.jpg')])
         ->assertSessionHasErrors('amount');
-    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 10000000])
+    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 10000000, 'proof' => UploadedFile::fake()->image('bukti.jpg')])
         ->assertRedirect(route('marketing.bookings.show', $booking))
         ->assertSessionHasNoErrors();
     $otherCustomer = Customer::create(['name' => 'Customer Pengganti']);
@@ -566,7 +973,7 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
         'customer_mode' => 'existing',
         'customer_id' => $otherCustomer->id,
         'booking_date' => '2026-10-01',
-        'blocking_until' => '2026-10-20 10:00:00',
+        'blocking_until' => '2026-12-20 10:00:00',
         'dp_percentage' => 20,
         'akad_fee' => 2000000,
         'status' => 'booking',
@@ -577,7 +984,7 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
         'customer_mode' => 'existing',
         'customer_id' => $customer->id,
         'booking_date' => '2026-10-01',
-        'blocking_until' => '2026-10-20 10:00:00',
+        'blocking_until' => '2026-12-20 10:00:00',
         'dp_paid_amount' => 5000000,
         'akad_fee' => 2000000,
         'status' => 'booking',
@@ -589,7 +996,7 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
         'customer_mode' => 'existing',
         'customer_id' => $customer->id,
         'booking_date' => '2026-10-01',
-        'blocking_until' => '2026-10-20 10:00:00',
+        'blocking_until' => '2026-12-20 10:00:00',
         'dp_paid_amount' => 15000000,
         'akad_fee' => 2000000,
         'status' => 'booking',
@@ -602,9 +1009,9 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
         'notes' => 'Tambahan pembayaran DP dicatat dari form booking.',
     ]);
 
-    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 85000000.01])
+    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 85000000.01, 'proof' => UploadedFile::fake()->image('bukti.jpg')])
         ->assertSessionHasErrors('amount');
-    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 85000000, 'payment_method' => 'Bank KPR'])
+    $this->post($paymentRoute, [...$paymentData, 'stage' => 'dp', 'amount' => 85000000, 'payment_method' => 'Bank KPR', 'proof' => UploadedFile::fake()->image('bukti.jpg')])
         ->assertRedirect(route('marketing.bookings.show', $booking));
     $this->put(route('marketing.bookings.update', $booking), [
         'property_id' => $property->id,
@@ -612,7 +1019,7 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
         'customer_mode' => 'existing',
         'customer_id' => $customer->id,
         'booking_date' => '2026-10-01',
-        'blocking_until' => '2026-10-20 10:00:00',
+        'blocking_until' => '2026-12-20 10:00:00',
         'dp_paid_amount' => 100000000,
         'akad_fee' => 2000000,
         'akad_paid_amount' => 1000000,
@@ -627,13 +1034,13 @@ it('records payments in order and rejects out-of-order or excessive amounts', fu
         'customer_mode' => 'existing',
         'customer_id' => $customer->id,
         'booking_date' => '2026-10-01',
-        'blocking_until' => '2026-10-20 10:00:00',
+        'blocking_until' => '2026-12-20 10:00:00',
         'dp_paid_amount' => 100000000,
         'akad_fee' => 2000000,
         'akad_paid_amount' => 0,
         'status' => 'booking',
     ])->assertSessionHasErrors('akad_paid_amount');
-    $this->post($paymentRoute, [...$paymentData, 'stage' => 'akad_fee', 'amount' => 1000000])
+    $this->post($paymentRoute, [...$paymentData, 'stage' => 'akad_fee', 'amount' => 1000000, 'proof' => UploadedFile::fake()->image('bukti.jpg')])
         ->assertRedirect(route('marketing.bookings.show', $booking));
     $this->assertDatabaseCount('booking_payments', 5);
     $this->assertDatabaseHas('booking_payments', [

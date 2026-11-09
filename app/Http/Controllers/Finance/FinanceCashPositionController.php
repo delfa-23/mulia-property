@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Http\Controllers\Controller;
+use App\Models\BookingPayment;
 use App\Models\FinanceCashAccount;
 use App\Models\FinanceCashAccountBalanceHistory;
 use App\Models\FinanceCashFlow;
 use App\Models\Property;
+use App\Services\BookingPaymentSummaryService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -18,7 +20,7 @@ use Illuminate\View\View;
 
 class FinanceCashPositionController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, BookingPaymentSummaryService $paymentSummaryService): View
     {
         $this->authorizeFinance($request);
 
@@ -134,6 +136,21 @@ class FinanceCashPositionController extends Controller
                 'plans' => $plansInWeek,
             ]];
         });
+        $bookingPayments = BookingPayment::query()
+            ->where('approval_status', 'approved')
+            ->with(['booking.customer', 'booking.lot.block.property'])
+            ->whereBetween('paid_at', [$historyStart->copy()->startOfDay(), $historyEnd->copy()->endOfDay()])
+            ->orderByDesc('paid_at')
+            ->get();
+        $bookingPaymentReport = $bookingPayments->map(function (BookingPayment $payment) use ($paymentSummaryService): array {
+            $summary = $paymentSummaryService->summarize($payment->booking);
+
+            return [
+                'payment' => $payment,
+                'summary' => $summary,
+                'remaining' => collect($summary['stages'])->sum('remaining'),
+            ];
+        });
 
         return view('keuangan.cash-position.index', [
             'cashAccounts' => FinanceCashAccount::query()->orderBy('id')->get(),
@@ -159,6 +176,7 @@ class FinanceCashPositionController extends Controller
             'weekOptions' => $weekOptions,
             'weekDateBounds' => $weekDateBounds,
             'selectedWeek' => (string) old('week_number', 1),
+            'bookingPaymentReport' => $bookingPaymentReport,
         ]);
     }
 

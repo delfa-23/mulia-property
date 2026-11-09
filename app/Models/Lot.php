@@ -17,6 +17,7 @@ class Lot extends Model
         'block_id',
         'lot_number',
         'house_price',
+        'construction_realization',
         'status',
         'notes',
         'image_path',
@@ -28,6 +29,7 @@ class Lot extends Model
     {
         return [
             'house_price' => 'decimal:2',
+            'construction_realization' => 'decimal:2',
             'image_paths' => 'array',
             'map_coordinates' => 'array',
         ];
@@ -96,9 +98,11 @@ class Lot extends Model
 
     public function constructionProgressPercentage(): float
     {
-        return (float) $this->constructionProgresses
+        $weightedProgress = (float) $this->constructionProgresses
             ->whereNotNull('stage_id')
             ->sum(fn (ConstructionProgress $progress): float => $progress->weightedProgressPercentage());
+
+        return min(100, max(0, $weightedProgress));
     }
 
     public function pemberkasanDocuments(): HasMany

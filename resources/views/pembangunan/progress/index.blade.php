@@ -166,7 +166,7 @@
                                 @php
                                     $rab = $lot->budgets->sum('amount');
 
-                                    $realisasi = (float) ($lot->construction_realization_total ?? 0);
+                                    $realisasi = (float) ($lot->construction_realization ?? 0);
 
                                     $depiasi = $rab - $realisasi;
 
@@ -211,7 +211,7 @@
                                     @php
                                         $statusLabels = [
                                             'available' => 'Tersedia',
-                                            'blocked' => 'Blocked',
+                                            'blocked' => 'Belum Boleh Dijual',
                                             'booked' => 'Booking',
                                             'process' => 'Proses',
                                             'akad' => 'Akad',

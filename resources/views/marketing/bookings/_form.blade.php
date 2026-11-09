@@ -1,26 +1,18 @@
 @php
     $customerMode = old('customer_mode', 'existing');
     $paymentTermsLocked = $paymentTermsLocked ?? false;
-    $currentDpPaidAmount = old(
-        'dp_paid_amount',
-        isset($paymentSummary) ? number_format($paymentSummary['dp_paid'], 2, '.', '') : 0
-    );
-    $currentAkadPaidAmount = old(
-        'akad_paid_amount',
-        isset($paymentSummary)
-            ? number_format(collect($paymentSummary['stages'])->firstWhere('key', 'akad_fee')['paid'] ?? 0, 2, '.', '')
-            : 0
-    );
+    $akadFeeLocked = $paymentTermsLocked && ! auth()->user()->isAdmin();
     $currentAkadFee = old('akad_fee', $booking?->akad_fee ?? 0);
+    $currentDpPaid = old('dp_paid_amount', $paymentSummary['dp_paid'] ?? 0);
+    $currentAkadStage = collect($paymentSummary['stages'] ?? '')->firstWhere('key', 'akad_fee');
+    $currentAkadPaid = old('akad_paid_amount', data_get($currentAkadStage, 'paid', 0));
 @endphp
 
 <div
     x-data="{
         customerMode: @js($customerMode),
         housePrice: Number(@js($booking?->house_price_snapshot ?? $booking?->lot?->house_price ?? 0)),
-        dpPaidAmount: Number(@js($currentDpPaidAmount)),
         akadFeeAmount: Number(@js($currentAkadFee)),
-        akadPaidAmount: Number(@js($currentAkadPaidAmount)),
         formatRupiah(value) {
             return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(value || 0);
         },
@@ -152,27 +144,11 @@
             <p class="mt-1">Total pembayaran DP sampai lunas adalah 100% harga rumah: Rp <span x-text="formatRupiah(housePrice)"></span>.</p>
             <p>Jika ada pembayaran dari bank, nominalnya ikut dicatat sebagai pembayaran DP.</p>
         </div>
-        <div>
-            <label for="dp-paid-amount" class="mb-2 block text-sm font-medium">DP Sudah Dibayar (Rp)</label>
-            <input id="dp-paid-amount" type="text" name="dp_paid_amount" value="{{ $currentDpPaidAmount }}" inputmode="decimal" data-currency-input data-currency-min="0" :data-currency-max="housePrice" x-on:input="dpPaidAmount = normalizeRupiah($event.target.value)" required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-            <p class="mt-1 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                Sudah dibayar: <span x-text="formatRupiah(housePrice > 0 ? dpPaidAmount / housePrice * 100 : 0) + '% dari Rp ' + formatRupiah(housePrice)"></span>
-            </p>
-            @error('dp_paid_amount')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-        </div>
+        <p class="text-sm text-zinc-600">Nominal pembayaran DP dikelola melalui menu Pembayaran.</p>
         <div class="max-w-xl">
             <label for="akad-fee" class="mb-2 block text-sm font-medium">Biaya Akad (Rp)</label>
-            <input id="akad-fee" type="text" name="akad_fee" value="{{ $currentAkadFee }}" inputmode="decimal" data-currency-input data-currency-min="0" x-on:input="akadFeeAmount = normalizeRupiah($event.target.value)" @readonly($paymentTermsLocked) required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
+            <input id="akad-fee" type="text" name="akad_fee" value="{{ $currentAkadFee }}" inputmode="decimal" data-currency-input data-currency-min="0" x-on:input="akadFeeAmount = normalizeRupiah($event.target.value)" @readonly($akadFeeLocked) required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
             @error('akad_fee')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-        </div>
-        <div class="max-w-xl">
-            <label for="akad-paid-amount" class="mb-2 block text-sm font-medium">Biaya Akad Sudah Dibayar (Rp)</label>
-            <input id="akad-paid-amount" type="text" name="akad_paid_amount" value="{{ $currentAkadPaidAmount }}" inputmode="decimal" data-currency-input data-currency-min="0" :data-currency-max="akadFeeAmount" x-on:input="akadPaidAmount = normalizeRupiah($event.target.value)" required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-            <p class="mt-1 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                Sudah dibayar: <span x-text="formatRupiah(akadFeeAmount > 0 ? akadPaidAmount / akadFeeAmount * 100 : (akadPaidAmount === 0 ? 100 : 0)) + '% dari Rp ' + formatRupiah(akadFeeAmount)"></span>
-                · Sisa: Rp <span x-text="formatRupiah(Math.max(0, akadFeeAmount - akadPaidAmount))"></span>
-            </p>
-            @error('akad_paid_amount')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
         </div>
     </div>
     @if(isset($paymentSummary))
@@ -199,8 +175,10 @@
             </div>
         </section>
     @endif
-    @if($paymentTermsLocked)
+    @if($paymentTermsLocked && ! auth()->user()->isAdmin())
         <p class="text-sm text-amber-700">Harga dan biaya akad dikunci setelah pembayaran dicatat. Total DP dan biaya akad yang sudah dibayar tidak dapat dikurangi.</p>
+    @elseif(auth()->user()->isAdmin())
+        <p class="text-sm text-amber-700">Sebagai admin, biaya akad tetap dapat diperbarui meskipun pembayaran sudah dicatat. Nilai baru tidak boleh lebih kecil dari biaya akad yang sudah dibayar.</p>
     @endif
 
     <div class="grid gap-4 sm:grid-cols-2">

@@ -1,6 +1,7 @@
     <?php
 
 use App\Http\Middleware\DivisionMiddleware;
+use App\Http\Middleware\ExpireBookings;
 use App\Http\Middleware\FinanceMiddleware;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\SetTeamUrlDefaults;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => RoleMiddleware::class,
             'division' => DivisionMiddleware::class,
             'finance' => FinanceMiddleware::class,
+            'expire.bookings' => ExpireBookings::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -82,7 +82,6 @@ class LotController extends Controller
 
         $this->normalizeLotNumberInput($request, $block);
         $this->normalizeHousePriceInput($request);
-
         $validated = $request->validate([
             'lot_number' => [
                 'required',
@@ -98,7 +97,7 @@ class LotController extends Controller
             ],
             'status' => [
                 'required',
-                'in:available,blocked,booked,process,akad,finish,cancelled',
+                'in:available,blocked,booked,process,akad',
             ],
             'notes' => [
                 'nullable',
@@ -140,8 +139,6 @@ class LotController extends Controller
             404
         );
 
-        $isConstructionRoute = request()->routeIs('pembangunan.*');
-
         return view('admin.lots.edit', [
             'property' => $property,
             'block' => $block,
@@ -151,12 +148,8 @@ class LotController extends Controller
                 old('lot_number', $lot->lot_number)
             ),
             'routePrefix' => 'admin.properties',
-            'backUrl' => $isConstructionRoute
-                ? route('pembangunan.dashboard', ['property_id' => $property->id])
-                : route('admin.properties.blocks.lots.index', [$property, $block]),
-            'updateUrl' => $isConstructionRoute
-                ? route('pembangunan.properties.blocks.lots.update', [$property, $block, $lot])
-                : route('admin.properties.blocks.lots.update', [$property, $block, $lot]),
+            'backUrl' => route('admin.properties.blocks.lots.index', [$property, $block]),
+            'updateUrl' => route('admin.properties.blocks.lots.update', [$property, $block, $lot]),
         ]);
     }
 
@@ -174,6 +167,10 @@ class LotController extends Controller
 
         $this->normalizeLotNumberInput($request, $block);
         $this->normalizeHousePriceInput($request);
+        $allowedStatuses = ['available', 'blocked', 'booked', 'process', 'akad'];
+        if (in_array($lot->status, ['finish', 'cancelled'], true)) {
+            $allowedStatuses[] = $lot->status;
+        }
 
         $validated = $request->validate([
             'lot_number' => [
@@ -190,7 +187,7 @@ class LotController extends Controller
             ],
             'status' => [
                 'required',
-                'in:available,blocked,booked,process,akad,finish,cancelled',
+                'in:'.implode(',', $allowedStatuses),
             ],
             'notes' => [
                 'nullable',
@@ -225,11 +222,9 @@ class LotController extends Controller
             Storage::disk('public')->delete($imagePath);
         }
 
-        $redirect = request()->routeIs('pembangunan.*')
-            ? redirect()->route('pembangunan.dashboard', ['property_id' => $property->id])
-            : redirect()->route('admin.properties.blocks.lots.index', [$property, $block]);
-
-        return $redirect->with('success', 'Kavling berhasil diperbarui.');
+        return redirect()
+            ->route('admin.properties.blocks.lots.index', [$property, $block])
+            ->with('success', 'Kavling berhasil diperbarui.');
     }
 
     public function destroy(

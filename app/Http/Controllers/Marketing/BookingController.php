@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Block;
 use App\Models\Booking;
 use App\Models\BookingHistory;
+use App\Models\BookingPayment;
 use App\Models\Customer;
 use App\Models\Lot;
 use App\Models\MarketingLead;
@@ -19,15 +20,16 @@ use App\Services\PemberkasanDocumentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class BookingController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, MarketingLeadAccess $leadAccess): View
     {
-        $bookings = Booking::query()
+        $bookings = $leadAccess->scopeBookings(Booking::query()
             ->with([
                 'lot.block.property',
                 'customer',
@@ -37,7 +39,7 @@ class BookingController extends Controller
                 'histories' => fn ($query) => $query
                     ->where('to_status', 'cancelled')
                     ->where('notes', 'Booking dibatalkan otomatis karena batas blocking terlewati.'),
-            ])
+            ]), $request->user())
             ->when($request->filled('property_id'), fn ($query) => $query->whereHas('lot.block', fn ($block) => $block->where('property_id', $request->integer('property_id'))))
             ->when($request->filled('lot_id'), fn ($query) => $query->where('lot_id', $request->integer('lot_id')))
             ->when($request->filled('customer_id'), fn ($query) => $query->where('customer_id', $request->integer('customer_id')))
@@ -52,7 +54,16 @@ class BookingController extends Controller
             'properties' => Property::query()->orderBy('name')->get(),
             'blocks' => Block::query()->when($request->filled('property_id'), fn ($query) => $query->where('property_id', $request->integer('property_id')))->orderBy('name')->get(),
             'lotOptions' => Lot::query()->with('block')->when($request->filled('property_id'), fn ($query) => $query->whereHas('block', fn ($block) => $block->where('property_id', $request->integer('property_id'))))->orderBy('block_id')->orderBy('lot_number')->get(),
-            'customerOptions' => Customer::query()->orderBy('name')->get(['id', 'name']),
+            'customerOptions' => Customer::query()
+                ->when(
+                    ! $leadAccess->canManageTeam($request->user()),
+                    fn ($query) => $query->whereHas(
+                        'bookings',
+                        fn ($bookings) => $leadAccess->scopeBookings($bookings, $request->user()),
+                    ),
+                )
+                ->orderBy('name')
+                ->get(['id', 'name']),
             'salesUsers' => $this->salesOptions(),
         ]);
     }
@@ -96,6 +107,7 @@ class BookingController extends Controller
 
             $booking = Booking::create([
                 ...$validated,
+                'created_by' => $request->user()->id,
                 'house_price_snapshot' => $lot->house_price,
                 'dp_percentage' => Booking::DP_PERCENTAGE,
             ]);
@@ -126,7 +138,7 @@ class BookingController extends Controller
                 $this->recordBookingPayment($booking, 'akad_fee', $akadPaidAmount, $request, $activityLogger, $financeSync, 'Pembayaran biaya akad awal dicatat dari form booking.');
             }
 
-            $lot->update(['status' => $this->lotStatusFor($booking->status)]);
+            $lot->update(['status' => $this->lotStatusFor($booking->status, $booking->payments()->exists())]);
 
             BookingHistory::create([
                 'booking_id' => $booking->id,
@@ -141,8 +153,14 @@ class BookingController extends Controller
         return redirect()->route('marketing.bookings.index')->with('success', 'Booking berhasil dibuat.');
     }
 
-    public function show(Booking $booking, BookingPaymentSummaryService $paymentSummaryService): View
-    {
+    public function show(
+        Request $request,
+        Booking $booking,
+        MarketingLeadAccess $leadAccess,
+        BookingPaymentSummaryService $paymentSummaryService,
+    ): View {
+        $leadAccess->authorizeBooking($request->user(), $booking);
+
         $booking->load([
             'lot.block.property',
             'customer',
@@ -160,8 +178,10 @@ class BookingController extends Controller
         return view('marketing.bookings.show', compact('booking', 'paymentSummary'));
     }
 
-    public function editDocuments(Booking $booking): View
+    public function editDocuments(Request $request, Booking $booking, MarketingLeadAccess $leadAccess): View
     {
+        $leadAccess->authorizeBooking($request->user(), $booking);
+
         $booking->load([
             'lot.block.property',
             'customer',
@@ -182,7 +202,10 @@ class BookingController extends Controller
         Request $request,
         Booking $booking,
         PemberkasanDocumentService $documentService,
+        MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
+        $leadAccess->authorizeBooking($request->user(), $booking);
+
         $validated = $request->validate([
             'document_uploads' => ['required', 'array', 'min:1'],
             'document_uploads.*' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
@@ -239,6 +262,7 @@ class BookingController extends Controller
         MarketingLeadAccess $leadAccess,
         BookingPaymentSummaryService $paymentSummaryService,
     ): View {
+        $leadAccess->authorizeBooking($request->user(), $booking);
         $booking->load(['lot', 'payments']);
         $paymentSummary = $paymentSummaryService->summarize($booking);
 
@@ -257,6 +281,7 @@ class BookingController extends Controller
         MarketingLeadAccess $leadAccess,
         BookingPaymentSummaryService $paymentSummaryService,
     ): RedirectResponse {
+        $leadAccess->authorizeBooking($request->user(), $booking);
         $validated = $this->validated($request, $booking);
         if (
             ! empty($validated['lead_id']) &&
@@ -290,15 +315,19 @@ class BookingController extends Controller
             $hasPayments = $lockedBooking->payments()->exists();
             $hasPendingPaymentOrders = $lockedBooking->paymentOrders()->where('status', 'pending')->exists();
             $hasPaymentActivity = $hasPayments || $hasPendingPaymentOrders;
+            $akadFeeChanged = abs((float) $lockedBooking->akad_fee - (float) $validated['akad_fee']) > 0.009;
 
             if (
                 $hasPaymentActivity &&
+                ! $request->user()->isAdmin() &&
                 ((int) $lockedBooking->customer_id !== (int) $validated['customer_id'] ||
                     $lockedBooking->lot_id !== $targetLot->id ||
                     (float) $lockedBooking->akad_fee !== (float) $validated['akad_fee'])
             ) {
                 throw ValidationException::withMessages([
-                    'customer_id' => 'Data customer, kavling, harga, dan biaya akad tidak dapat diubah setelah pembayaran dicatat.',
+                    'customer_id' => $request->user()->isAdmin()
+                        ? 'Data customer dan kavling tidak dapat diubah setelah pembayaran dicatat.'
+                        : 'Data customer, kavling, harga, dan biaya akad tidak dapat diubah setelah pembayaran dicatat.',
                 ]);
             }
 
@@ -306,13 +335,20 @@ class BookingController extends Controller
                 $this->ensureLotAvailable($targetLot, $lockedBooking);
             }
 
-            $validated['house_price_snapshot'] = $hasPaymentActivity
+            $existingHousePriceSnapshot = (float) $lockedBooking->house_price_snapshot;
+            $validated['house_price_snapshot'] = $existingHousePriceSnapshot > 0 && $targetLot->id === $lockedBooking->lot_id
                 ? $lockedBooking->house_price_snapshot
                 : $targetLot->house_price;
             $validated['dp_percentage'] = Booking::DP_PERCENTAGE;
             $housePrice = (float) $validated['house_price_snapshot'];
-            $existingDpPaid = (float) $lockedBooking->payments()->whereIn('stage', ['dp', 'bank_settlement'])->sum('amount');
-            $existingAkadPaid = (float) $lockedBooking->payments()->where('stage', 'akad_fee')->sum('amount');
+            $existingDpPaid = (float) $lockedBooking->payments()
+                ->where('approval_status', 'approved')
+                ->whereIn('stage', ['dp', 'bank_settlement'])
+                ->sum('amount');
+            $existingAkadPaid = (float) $lockedBooking->payments()
+                ->where('approval_status', 'approved')
+                ->where('stage', 'akad_fee')
+                ->sum('amount');
             $requestedDpPaid = $dpPaidAmount === null
                 ? $existingDpPaid
                 : round($dpPaidAmount, 2);
@@ -367,7 +403,33 @@ class BookingController extends Controller
                 ]);
             }
 
-            $lockedBooking->update($validated);
+            $lockedBooking->fill([
+                'lot_id' => $validated['lot_id'],
+                'customer_id' => $validated['customer_id'],
+                'sales_id' => $validated['sales_id'] ?? null,
+                'lead_id' => $validated['lead_id'] ?? null,
+                'booking_date' => $validated['booking_date'],
+                'blocking_until' => $validated['blocking_until'] ?? null,
+                'house_price_snapshot' => $validated['house_price_snapshot'],
+                'dp_percentage' => $validated['dp_percentage'],
+                'akad_fee' => $validated['akad_fee'],
+                'status' => $validated['status'],
+                'notes' => $validated['notes'] ?? null,
+                'applicant_work_location_url' => $validated['applicant_work_location_url'] ?? null,
+                'spouse_work_location_url' => $validated['spouse_work_location_url'] ?? null,
+            ]);
+            $lockedBooking->save();
+
+            if ($akadFeeChanged && $request->user()->isAdmin()) {
+                $lockedBooking->paymentOrders()
+                    ->where('stage', 'akad_fee')
+                    ->where('status', 'pending')
+                    ->update([
+                        'status' => 'cancelled',
+                        'snap_token' => null,
+                        'redirect_url' => null,
+                    ]);
+            }
 
             if ($additionalDpPaid > 0.009) {
                 $this->recordBookingPayment($lockedBooking, 'dp', $additionalDpPaid, $request, $activityLogger, $financeSync, 'Tambahan pembayaran DP dicatat dari form booking.');
@@ -380,7 +442,7 @@ class BookingController extends Controller
             if ($oldLot && $oldLot->id !== $targetLot->id) {
                 $oldLot->update(['status' => 'available']);
             }
-            $targetLot->update(['status' => $this->lotStatusFor($lockedBooking->status)]);
+            $targetLot->update(['status' => $this->lotStatusFor($lockedBooking->status, $lockedBooking->payments()->exists())]);
 
             if ($lockedBooking->wasChanged('status') || $lockedBooking->wasChanged(['lot_id', 'customer_id', 'notes'])) {
                 BookingHistory::create([
@@ -404,7 +466,15 @@ class BookingController extends Controller
         ActivityLogger $activityLogger,
         BookingPaymentFinanceSync $financeSync,
         BookingPaymentSummaryService $paymentSummaryService,
+        MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
+        $leadAccess->authorizeBooking($request->user(), $booking);
+
+        foreach (['amount'] as $currencyField) {
+            if ($request->filled($currencyField)) {
+                $request->merge([$currencyField => $this->normalizeCurrencyInput((string) $request->input($currencyField))]);
+            }
+        }
         $validated = $request->validate([
             'stage' => ['required', Rule::in(['dp', 'akad_fee'])],
             'amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.01'],
@@ -412,9 +482,10 @@ class BookingController extends Controller
             'payment_method' => ['nullable', 'string', 'max:100'],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string'],
+            'proof' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
         ]);
 
-        DB::transaction(function () use ($request, $booking, $validated, $activityLogger, $financeSync, $paymentSummaryService): void {
+        DB::transaction(function () use ($request, $booking, $validated, $activityLogger, $paymentSummaryService): void {
             $lockedBooking = Booking::query()->with('lot')->lockForUpdate()->findOrFail($booking->id);
 
             if (in_array($lockedBooking->status, ['cancelled', 'finish'], true)) {
@@ -445,14 +516,80 @@ class BookingController extends Controller
             }
 
             $payment = $lockedBooking->payments()->create([
-                ...$validated,
+                ...collect($validated)->except('proof')->all(),
                 'recorded_by' => $request->user()->id,
+                'payment_channel' => 'manual',
+                'approval_status' => 'pending',
+                'proof_path' => $request->file('proof')->store('payment-proofs', 'public'),
             ]);
-            $financeSync->sync($payment);
-            $activityLogger->record($request, 'booking.payment_recorded', $payment, 'Pembayaran booking dicatat.');
+            $activityLogger->record($request, 'booking.payment_submitted', $payment, 'Pembayaran manual diajukan dan menunggu persetujuan admin.');
         });
 
-        return redirect()->route('marketing.bookings.show', $booking)->with('success', 'Pembayaran berhasil dicatat.');
+        return redirect()->route('marketing.bookings.show', $booking)->with('success', 'Pembayaran manual berhasil diajukan dan menunggu persetujuan admin.');
+    }
+
+    public function approvePayment(
+        Request $request,
+        BookingPayment $payment,
+        ActivityLogger $activityLogger,
+        BookingPaymentFinanceSync $financeSync,
+    ): RedirectResponse {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        if ($payment->approval_status !== 'pending') {
+            return back()->with('error', 'Pembayaran sudah diproses.');
+        }
+
+        DB::transaction(function () use ($request, $payment, $activityLogger, $financeSync): void {
+            $payment->update([
+                'approval_status' => 'approved',
+                'reviewed_by' => $request->user()->id,
+                'reviewed_at' => now(),
+                'rejection_reason' => null,
+            ]);
+            $financeSync->sync($payment->fresh());
+            $activityLogger->record($request, 'booking.payment_approved', $payment, 'Pembayaran manual disetujui admin.');
+        });
+
+        return back()->with('success', 'Pembayaran manual disetujui.');
+    }
+
+    public function paymentApprovals(Request $request): View
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+        $payments = BookingPayment::query()
+            ->where('payment_channel', 'manual')
+            ->where('approval_status', 'pending')
+            ->with(['booking.customer', 'booking.lot.block.property', 'recordedBy'])
+            ->latest('paid_at')
+            ->paginate(15);
+
+        return view('admin.payments.approvals', ['payments' => $payments]);
+    }
+
+    public function rejectPayment(Request $request, BookingPayment $payment, ActivityLogger $activityLogger): RedirectResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        if ($payment->approval_status !== 'pending') {
+            return back()->with('error', 'Pembayaran sudah diproses.');
+        }
+
+        $payment->update([
+            'approval_status' => 'rejected',
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+            'rejection_reason' => $validated['rejection_reason'],
+        ]);
+        if ($payment->proof_path) {
+            Storage::disk('public')->delete($payment->proof_path);
+        }
+        $activityLogger->record($request, 'booking.payment_rejected', $payment, 'Pembayaran manual ditolak admin.');
+
+        return back()->with('success', 'Pembayaran manual ditolak.');
     }
 
     public function destroy(
@@ -461,42 +598,48 @@ class BookingController extends Controller
         ActivityLogger $activityLogger,
         PemberkasanDocumentService $documentService,
     ): RedirectResponse {
-        abort_unless($booking->status === 'cancelled', 422, 'Booking harus berstatus cancelled sebelum dihapus.');
-        abort_if(
-            $booking->paymentOrders()->where('status', 'pending')->exists(),
-            422,
-            'Booking tidak dapat dihapus selama transaksi Midtrans masih menunggu pembayaran.',
-        );
-        abort_if(
-            $booking->payments()->exists()
-                || $booking->paymentOrders()->where('status', 'paid')->exists(),
-            422,
-            'Booking tidak dapat dihapus karena memiliki riwayat pembayaran. Batalkan booking dan simpan riwayat transaksi untuk keperluan keuangan.',
-        );
+        abort_unless($request->user()?->isAdmin(), 403);
+
+        $documentDeletionError = null;
 
         try {
             $documentService->deleteBookingDocuments($booking);
         } catch (\Throwable $exception) {
-            return back()->withErrors(['booking' => $exception->getMessage()]);
+            report($exception);
+            $documentDeletionError = $exception->getMessage();
         }
 
         DB::transaction(function () use ($request, $booking, $activityLogger): void {
             $lot = Lot::query()->lockForUpdate()->find($booking->lot_id);
 
             if ($lot) {
-                $lot->update(['status' => 'available']);
+                $lot->update([
+                    'status' => $lot->bookings()->whereKeyNot($booking->id)->exists()
+                        ? 'booked'
+                        : 'available',
+                ]);
             }
 
-            $activityLogger->record($request, 'booking.deleted', $booking, 'Booking cancelled dihapus permanen.');
+            $activityLogger->record($request, 'booking.deleted', $booking, 'Booking dihapus permanen oleh admin.');
             $booking->delete();
         });
 
-        return back()->with('success', 'Booking cancelled berhasil dihapus.');
+        return back()
+            ->with('success', 'Booking berhasil dihapus.')
+            ->with('document_delete_warning', $documentDeletionError);
     }
 
     /** @return array<string, mixed> */
     private function validated(Request $request, ?Booking $booking = null): array
     {
+        foreach (['akad_fee', 'dp_paid_amount', 'akad_paid_amount'] as $currencyField) {
+            if ($request->filled($currencyField)) {
+                $request->merge([
+                    $currencyField => $this->normalizeCurrencyInput((string) $request->input($currencyField)),
+                ]);
+            }
+        }
+
         $validated = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'lot_id' => ['required', 'exists:lots,id'],
@@ -545,6 +688,14 @@ class BookingController extends Controller
         return $validated;
     }
 
+    private function normalizeCurrencyInput(string $value): string
+    {
+        $value = str_replace(["\u{00A0}", 'Rp', 'rp', '.', ','], ['', '', '', '', '.'], $value);
+        $value = preg_replace('/[^\d.]/', '', $value) ?? '';
+
+        return $value === '' ? '0' : rtrim($value, '.');
+    }
+
     private function recordBookingPayment(
         Booking $booking,
         string $stage,
@@ -560,6 +711,8 @@ class BookingController extends Controller
             'paid_at' => now(),
             'recorded_by' => $request->user()->id,
             'notes' => $notes,
+            'payment_channel' => 'manual',
+            'approval_status' => 'approved',
         ]);
 
         $financeSync->sync($payment);
@@ -599,7 +752,16 @@ class BookingController extends Controller
 
         return [
             'properties' => Property::query()->orderBy('name')->get(),
-            'customers' => Customer::query()->orderBy('name')->get(),
+            'customers' => Customer::query()
+                ->when(
+                    ! $leadAccess->canManageTeam($request->user()),
+                    fn ($query) => $query->whereHas(
+                        'bookings',
+                        fn ($bookings) => $leadAccess->scopeBookings($bookings, $request->user()),
+                    ),
+                )
+                ->orderBy('name')
+                ->get(),
             'lots' => Lot::query()->with('block.property')->whereNotIn('status', ['finish', 'cancelled'])->orderBy('lot_number')->get(),
             'salesUsers' => $this->salesOptions(),
             'leads' => $leads,
@@ -647,11 +809,13 @@ class BookingController extends Controller
         }
     }
 
-    private function lotStatusFor(string $status): string
+    private function lotStatusFor(string $status, bool $hasPayments = false): string
     {
         return $status === 'cancelled'
             ? 'available'
-            : ($status === 'booking' ? 'booked' : $status);
+            : ($status === 'finish' && ! $hasPayments
+                ? 'available'
+                : ($status === 'booking' ? 'booked' : ($status === 'finish' ? 'akad' : $status)));
     }
 
     private function ensureStatusOrder(

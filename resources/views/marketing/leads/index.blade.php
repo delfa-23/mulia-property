@@ -134,6 +134,13 @@
                                             <button class="text-zinc-600 dark:text-zinc-300">Arsipkan</button>
                                         </form>
                                     @endif
+                                    @if(auth()->user()->isAdmin())
+                                        <form class="ml-3 inline" method="POST" action="{{ route('marketing.leads.force-destroy', $lead) }}" onsubmit="return confirm('Hapus prospek ini secara permanen? Tindakan ini tidak dapat dibatalkan.')">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button class="text-red-600 dark:text-red-400">Hapus</button>
+                                        </form>
+                                    @endif
                                 </td>
                             </tr>
                         @empty

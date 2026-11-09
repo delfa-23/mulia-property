@@ -11,7 +11,12 @@
 ])
 
 @php
-    $lotStatuses = config('lot_statuses');
+    $lotStatuses = collect(config('lot_statuses'))->except(['finish', 'cancelled'])->all();
+    $visibleLotStatus = fn (string $status): string => match ($status) {
+        'finish' => 'akad',
+        'cancelled' => 'blocked',
+        default => $status,
+    };
     $mappedLotIds = $areas->whereNotNull('lot_id')->pluck('lot_id');
     $legacyMappedLots = $lots
         ->filter(fn ($lot): bool => is_array($lot->map_coordinates) && ! $mappedLotIds->contains($lot->id))
@@ -69,7 +74,7 @@
                                         $lot = null;
                                     }
                                     $status = $lot
-                                        ? ($lotStatuses[$lot->status] ?? ['label' => ucfirst($lot->status), 'color' => '#64748b', 'fill' => '#94a3b8'])
+                                        ? ($lotStatuses[$visibleLotStatus($lot->status)] ?? ['label' => ucfirst($lot->status), 'color' => '#64748b', 'fill' => '#94a3b8'])
                                         : ['label' => 'Belum tertaut', 'color' => '#475569', 'fill' => '#cbd5e1'];
                                     $lotLabel = $lot ? $lot->block->name.'/'.$lot->lot_number : ($area->label ?: 'Area belum tertaut');
                                     $points = implode(' ', array_map(
@@ -77,7 +82,6 @@
                                         $area->polygon,
                                     ));
                                     $booking = $lot?->bookings->first();
-                                    $editableBooking = $booking && $booking->status !== 'finish' ? $booking : null;
                                 @endphp
                                 <polygon
                                     data-site-plan-lot
@@ -96,8 +100,8 @@
                                     data-lot-customer="{{ $booking?->customer?->name }}"
                                     data-lot-sales="{{ $booking?->sales?->name }}"
                                     data-lot-booking-status="{{ $booking?->status }}"
-                                    data-lot-action-url="{{ $managementRole === 'admin' && $lot ? route('admin.properties.blocks.lots.edit', [$property, $lot->block, $lot]) : ($managementRole === 'pembangunan' && $lot ? route('pembangunan.properties.blocks.lots.edit', [$property, $lot->block, $lot]) : ($managementRole === 'marketing' && $lot ? ($editableBooking ? route('marketing.bookings.edit', $editableBooking) : ($lot->status === 'available' ? route('marketing.bookings.create', ['property_id' => $property->id, 'lot_id' => $lot->id]) : '')) : '')) }}"
-                                    data-lot-action-label="{{ in_array($managementRole, ['admin', 'pembangunan'], true) ? 'Edit kavling' : ($booking ? 'Edit booking' : 'Tambah booking') }}"
+                                    data-lot-action-url="{{ $managementRole === 'admin' && $lot ? route('admin.properties.blocks.lots.edit', [$property, $lot->block, $lot]) : '' }}"
+                                    data-lot-action-label="{{ $managementRole === 'admin' ? 'Edit kavling' : '' }}"
                                     points="{{ $points }}"
                                     fill="{{ $status['fill'] }}"
                                     fill-opacity="0.42"
@@ -114,7 +118,7 @@
                             @foreach($legacyMappedLots as $lot)
                                 @php
                                     $coordinates = $lot->map_coordinates;
-                                    $status = $lotStatuses[$lot->status] ?? ['label' => ucfirst($lot->status), 'color' => '#64748b', 'fill' => '#94a3b8'];
+                                    $status = $lotStatuses[$visibleLotStatus($lot->status)] ?? ['label' => ucfirst($lot->status), 'color' => '#64748b', 'fill' => '#94a3b8'];
                                     $label = $lot->block->name.'/'.$lot->lot_number;
                                     $booking = $lot->bookings->first();
                                     $editableBooking = $booking && $booking->status !== 'finish' ? $booking : null;
@@ -145,8 +149,8 @@
                                     data-lot-customer="{{ $booking?->customer?->name }}"
                                     data-lot-sales="{{ $booking?->sales?->name }}"
                                     data-lot-booking-status="{{ $booking?->status }}"
-                                    data-lot-action-url="{{ $managementRole === 'admin' ? route('admin.properties.blocks.lots.edit', [$property, $lot->block, $lot]) : ($managementRole === 'pembangunan' ? route('pembangunan.properties.blocks.lots.edit', [$property, $lot->block, $lot]) : ($managementRole === 'marketing' && $lot ? ($editableBooking ? route('marketing.bookings.edit', $editableBooking) : ($lot->status === 'available' ? route('marketing.bookings.create', ['property_id' => $property->id, 'lot_id' => $lot->id]) : '')) : '')) }}"
-                                    data-lot-action-label="{{ in_array($managementRole, ['admin', 'pembangunan'], true) ? 'Edit kavling' : ($booking ? 'Edit booking' : 'Tambah booking') }}"
+                                    data-lot-action-url="{{ $managementRole === 'admin' ? route('admin.properties.blocks.lots.edit', [$property, $lot->block, $lot]) : '' }}"
+                                    data-lot-action-label="{{ $managementRole === 'admin' ? 'Edit kavling' : '' }}"
                                     points="{{ $points }}"
                                     fill="{{ $status['fill'] }}"
                                     fill-opacity="0.42"
@@ -176,8 +180,8 @@
                 ]) aria-label="Keterangan warna status kavling">
                     @foreach($lotStatuses as $status)
                         <span @class([
-                            'inline-flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-zinc-200',
-                            'xl:min-h-12 xl:rounded-lg xl:border xl:border-slate-200 xl:bg-slate-50 xl:px-3 xl:py-2 dark:xl:border-zinc-700 dark:xl:bg-zinc-800' => ! $wide,
+                            'inline-flex items-center gap-2 text-sm font-medium text-slate-800',
+                            'xl:min-h-12 xl:rounded-lg xl:border xl:border-slate-200 xl:bg-slate-50 xl:px-3 xl:py-2' => ! $wide,
                         ])>
                             <span class="size-4 shrink-0 rounded-full border-2 shadow-sm" style="background-color: {{ $status['color'] }}; border-color: {{ $status['color'] }}"></span>
                             {{ $status['label'] }}
@@ -190,16 +194,16 @@
                 </p>
 
                 @if($detailMode === 'modal')
-                    <dialog data-site-plan-modal aria-label="Detail kavling" class="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/60 dark:bg-zinc-900 dark:text-white">
+                    <dialog data-site-plan-modal aria-label="Detail kavling" class="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-xl border-0 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/60">
                 @endif
-                <div data-site-plan-detail @if($detailMode === 'panel') hidden @endif class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <div data-site-plan-detail @if($detailMode === 'panel') hidden @endif class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-start justify-between gap-4">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Detail kavling terpilih</p>
-                            <h3 data-site-plan-lot-label class="mt-1 text-xl font-bold text-[#10233D] dark:text-white"></h3>
+                            <h3 data-site-plan-lot-label class="mt-1 text-xl font-bold text-[#10233D]"></h3>
                         </div>
                         @if($detailMode === 'modal')
-                            <button type="button" data-site-plan-modal-close class="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-zinc-800 dark:hover:text-white">Tutup</button>
+                            <button type="button" data-site-plan-modal-close class="rounded-md px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900">Tutup</button>
                         @endif
                     </div>
                     <span data-site-plan-lot-status class="mt-2 inline-flex rounded-full px-3 py-1.5 text-sm font-semibold"></span>
@@ -215,11 +219,11 @@
                         <div>
                             <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Foto Kavling</p>
                             <div data-site-plan-lot-images hidden class="grid grid-cols-2 gap-2"></div>
-                            <p data-site-plan-lot-image-empty class="flex aspect-4/3 items-center justify-center rounded-lg bg-slate-100 px-2 text-center text-xs text-slate-500 dark:bg-zinc-800">Foto belum tersedia</p>
+                            <p data-site-plan-lot-image-empty class="flex aspect-4/3 items-center justify-center rounded-lg bg-slate-100 px-2 text-center text-xs text-slate-500">Foto belum tersedia</p>
                         </div>
                         <div>
                             <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Denah Perumahan</p>
-                            <img src="{{ $property->sitePlanUrl() }}" alt="Denah {{ $property->name }}" class="aspect-4/3 w-full rounded-lg bg-slate-100 object-contain dark:bg-zinc-800">
+                            <img src="{{ $property->sitePlanUrl() }}" alt="Denah {{ $property->name }}" class="aspect-4/3 w-full rounded-lg bg-slate-100 object-contain">
                         </div>
                     </div>
 

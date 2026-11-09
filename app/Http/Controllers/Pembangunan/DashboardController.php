@@ -8,7 +8,6 @@ use App\Models\Budget;
 use App\Models\CommonFacility;
 use App\Models\ConstructionProgress;
 use App\Models\ConstructionStage;
-use App\Models\ExpenseTransaction;
 use App\Models\Lot;
 use App\Models\Property;
 use Illuminate\Http\Request;
@@ -183,15 +182,15 @@ class DashboardController extends Controller
             ->whereNull('facility_id')
             ->tap($filterFinancialRecords)
             ->sum('amount');
-        $constructionExpense = ExpenseTransaction::query()
-            ->where('division', 'pembangunan')
-            ->whereNull('facility_id')
-            ->tap($filterFinancialRecords)
-            ->sum('amount');
+        $constructionExpense = $filterLots(Lot::query())
+            ->sum('construction_realization');
         $facilityBudgets = CommonFacility::query()
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->withSum([
                 'budgets as pembangunan_budget_total' => fn ($query) => $query->where('purpose', 'pembangunan'),
+            ], 'amount')
+            ->withSum([
+                'expenses as pembangunan_expense_total' => fn ($query) => $query->where('division', 'pembangunan'),
             ], 'amount')
             ->get();
         $totalFacilityBudget = $facilityBudgets->sum(
@@ -199,11 +198,11 @@ class DashboardController extends Controller
                 ? (float) $facility->pembangunan_budget_total
                 : (float) $facility->budget
         );
-        $facilityExpense = ExpenseTransaction::query()
-            ->where('division', 'pembangunan')
-            ->whereNotNull('facility_id')
-            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
-            ->sum('amount');
+        $facilityExpense = $facilityBudgets->sum(
+            fn (CommonFacility $facility): float => (float) $facility->realization > 0
+                ? (float) $facility->realization
+                : (float) $facility->pembangunan_expense_total
+        );
         $constructionDeviation = (float) $constructionBudget - (float) $constructionExpense;
         $facilityDeviation = (float) $totalFacilityBudget - (float) $facilityExpense;
         $totalBudget = (float) $constructionBudget + (float) $totalFacilityBudget;

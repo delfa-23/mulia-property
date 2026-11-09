@@ -18,4 +18,4 @@ Schedule::command('queue:work database --stop-when-empty --tries=4 --timeout=60'
 Schedule::command('bookings:expire')
     ->everyMinute()
     ->withoutOverlapping(2)
-    ->description('Cancel bookings past their blocking deadline');
+    ->description('Delete unpaid bookings past their blocking deadline and release their lots');

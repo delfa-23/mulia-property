@@ -36,9 +36,20 @@ class MarketingLeadController extends Controller
         );
 
         $leads = $query
-            ->with(['sales:id,name', 'assignedUser:id,name', 'latestBooking'])
+            ->with([
+                'sales:id,name',
+                'assignedUser:id,name',
+                'latestBooking' => function ($query) use ($access, $request): void {
+                    if (! $access->canManageTeam($request->user())) {
+                        $query->where('created_by', $request->user()->id);
+                    }
+                },
+            ])
             ->withCount([
-                'bookings as akad_bookings_count' => fn (Builder $query): Builder => $query
+                'bookings as akad_bookings_count' => fn (Builder $query): Builder => $access->scopeBookings(
+                    $query,
+                    $request->user(),
+                )
                     ->whereIn('status', ['akad', 'finish']),
             ])
             ->when($request->filled('search'), function (Builder $query) use ($filters): void {
@@ -74,7 +85,8 @@ class MarketingLeadController extends Controller
             'totalLeads' => (clone $visibleLeads)->count(),
             'hotLeads' => (clone $visibleLeads)->where('category', 'Hot')->count(),
             'akadLeads' => (clone $visibleLeads)
-                ->whereHas('bookings', fn (Builder $query): Builder => $query->whereIn('status', ['akad', 'finish']))
+                ->whereHas('bookings', fn (Builder $query): Builder => $access->scopeBookings($query, $request->user())
+                    ->whereIn('status', ['akad', 'finish']))
                 ->count(),
             'showArchived' => $request->boolean('archived'),
         ]);
@@ -91,6 +103,7 @@ class MarketingLeadController extends Controller
         if (! $access->canManageTeam($request->user())) {
             $validated['assigned_user_id'] = $request->user()->id;
         }
+        $validated['created_by'] = $request->user()->id;
         MarketingLead::create($validated);
 
         return redirect()->route('marketing.leads.index')->with('success', 'Prospek berhasil ditambahkan.');
@@ -102,8 +115,13 @@ class MarketingLeadController extends Controller
         $lead->load([
             'sales:id,name',
             'assignedUser:id,name',
-            'bookings.lot.block.property',
-            'bookings.customer',
+            'bookings' => function ($query) use ($access, $request): void {
+                if (! $access->canManageTeam($request->user())) {
+                    $query->where('created_by', $request->user()->id);
+                }
+
+                $query->with(['lot.block.property', 'customer']);
+            },
             'calls.performer:id,name',
             'surveys.property:id,name',
             'surveys.assignedUser:id,name',
@@ -160,6 +178,15 @@ class MarketingLeadController extends Controller
         $lead->update(['archived_at' => null]);
 
         return redirect()->route('marketing.leads.show', $lead)->with('success', 'Prospek berhasil dipulihkan.');
+    }
+
+    public function forceDestroy(Request $request, MarketingLead $lead): RedirectResponse
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
+
+        $lead->delete();
+
+        return redirect()->route('marketing.leads.index')->with('success', 'Prospek berhasil dihapus permanen.');
     }
 
     /** @return array<string, mixed> */

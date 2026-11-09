@@ -41,9 +41,6 @@ class ProgressController extends Controller
                 'budgets' => fn ($query) => $query->where('purpose', 'pembangunan'),
                 'constructionProgresses.stage',
             ])
-            ->withSum([
-                'constructionProgresses as construction_realization_total' => fn ($query) => $query->whereNotNull('stage_id'),
-            ], 'realization')
             ->when($request->filled('property_id'), function ($query) use ($request) {
                 $query->whereHas(
                     'block',
@@ -88,9 +85,7 @@ class ProgressController extends Controller
             'constructionProgresses.stage',
             'constructionProgresses.updatedBy',
         ]);
-        $constructionRealizationTotal = $lot->constructionProgresses
-            ->whereNotNull('stage_id')
-            ->sum('realization');
+        $constructionRealizationTotal = (float) $lot->construction_realization;
         $progressHistories = ConstructionProgressHistory::query()
             ->where('lot_id', $lot->id)
             ->with(['stage', 'updatedBy'])
@@ -161,6 +156,26 @@ class ProgressController extends Controller
         return $this->progressRedirect($property, $block, $lot, 'Progress pembangunan berhasil diperbarui.');
     }
 
+    public function updateRealization(
+        Request $request,
+        Property $property,
+        Block $block,
+        Lot $lot,
+    ): RedirectResponse {
+        abort_unless($request->user()->isAdmin(), 403);
+        $this->assertLotScope($property, $block, $lot);
+
+        $validated = $request->validate([
+            'construction_realization' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
+        ]);
+
+        $lot->update([
+            'construction_realization' => $validated['construction_realization'],
+        ]);
+
+        return $this->progressRedirect($property, $block, $lot, 'Total realisasi pengeluaran berhasil diperbarui.');
+    }
+
     public function destroy(
         Request $request,
         Property $property,
@@ -212,9 +227,7 @@ class ProgressController extends Controller
                 ),
             ],
             'progress' => ['required', 'numeric', 'min:0', 'max:100'],
-            'realization' => $isAdmin
-                ? ['required', 'numeric', 'decimal:0,2', 'min:0']
-                : ['prohibited'],
+            'realization' => ['prohibited'],
             'notes' => $isAdmin ? ['nullable', 'string'] : ['prohibited'],
         ]);
 
@@ -238,7 +251,6 @@ class ProgressController extends Controller
             ];
 
             if ($request->user()->isAdmin()) {
-                $attributes['realization'] = $validated['realization'];
                 $attributes['notes'] = $validated['notes'] ?? null;
             } elseif ($existingProgress === null) {
                 $attributes['realization'] = 0;
