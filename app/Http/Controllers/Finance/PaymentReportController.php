@@ -16,7 +16,7 @@ class PaymentReportController extends Controller
         $this->authorizeFinance($request);
 
         $bookings = Booking::query()
-            ->with(['customer', 'lot.block.property', 'payments'])
+            ->with(['customer', 'lot.block.property.bookingPaymentSchedules', 'payments'])
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $search = $request->string('search')->trim()->toString();
                 $query->whereHas('customer', fn ($customer) => $customer->where('name', 'like', "%{$search}%"))
@@ -49,7 +49,13 @@ class PaymentReportController extends Controller
     public function show(Request $request, Booking $booking, BookingPaymentSummaryService $summaryService): View
     {
         $this->authorizeFinance($request);
-        $booking->load(['customer', 'lot.block.property', 'payments.recordedBy', 'payments.reviewedBy']);
+        $booking->load([
+            'customer',
+            'lot.block.property.bookingPaymentSchedules',
+            'payments.paymentSchedule',
+            'payments.recordedBy',
+            'payments.reviewedBy',
+        ]);
 
         return view('keuangan.payment-reports.show', [
             'booking' => $booking,

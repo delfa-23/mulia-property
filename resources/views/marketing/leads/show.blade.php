@@ -45,8 +45,9 @@
             </div>
         @endif
 
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-zinc-500">Tanggal masuk</p><p class="mt-1 font-semibold">{{ $lead->date_received->format('d/m/Y') }}</p></div>
+            <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-zinc-500">Perumahan</p><p class="mt-1 font-semibold">{{ $lead->property?->name ?? '-' }}</p></div>
             <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-zinc-500">PIC CRM</p><p class="mt-1 font-semibold">{{ $lead->assignedUser?->name ?? 'Belum ditugaskan' }}</p></div>
             <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900"><p class="text-sm text-zinc-500">Sumber</p><p class="mt-1 font-semibold">{{ $lead->source }}</p></div>
             <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">

@@ -47,6 +47,7 @@ it('shows CRM reports for all marketing accounts to staff users', function () {
 it('records a lead with its marketing category, source, and owner', function () {
     $user = createMarketingLeadFeatureTestUser();
     $sales = Sales::create(['name' => 'Sales Prospek']);
+    $property = Property::create(['name' => 'Perumahan Prospek']);
 
     $this->actingAs($user)
         ->post(route('marketing.leads.store'), [
@@ -54,6 +55,7 @@ it('records a lead with its marketing category, source, and owner', function () 
             'date_received' => '2026-10-14',
             'phone' => '081234567890',
             'domicile' => 'Perbaungan',
+            'property_id' => $property->id,
             'sales_id' => $sales->id,
             'category' => 'Hot',
             'source' => 'Meta Ads',
@@ -63,17 +65,48 @@ it('records a lead with its marketing category, source, and owner', function () 
         ->assertRedirect(route('marketing.leads.index'))
         ->assertSessionHas('success', 'Prospek berhasil ditambahkan.');
 
+    $lead = MarketingLead::query()->where('name', 'Calon Pembeli')->firstOrFail();
+    $this->get(route('marketing.leads.show', $lead))
+        ->assertSee('Perumahan Prospek');
+
     $this->assertDatabaseHas('marketing_leads', [
         'name' => 'Calon Pembeli',
         'date_received' => '2026-10-14 00:00:00',
         'phone' => '081234567890',
         'domicile' => 'Perbaungan',
+        'property_id' => $property->id,
         'sales_id' => $sales->id,
         'category' => 'Hot',
         'source' => 'Meta Ads',
         'last_progress' => 'Meminta jadwal survei.',
         'created_by' => $user->id,
     ]);
+});
+
+it('offers properties on the prospect form and filters the list by property', function () {
+    $user = createMarketingLeadFeatureTestUser();
+    $property = Property::create(['name' => 'Perumahan Pilihan']);
+    $otherProperty = Property::create(['name' => 'Perumahan Lain']);
+    MarketingLead::factory()->create([
+        'name' => 'Lead Perumahan Pilihan',
+        'property_id' => $property->id,
+        'created_by' => $user->id,
+    ]);
+    MarketingLead::factory()->create([
+        'name' => 'Lead Perumahan Lain',
+        'property_id' => $otherProperty->id,
+        'created_by' => $user->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('marketing.leads.create'))
+        ->assertSee('name="property_id"', false)
+        ->assertSee('Perumahan Pilihan');
+
+    $this->get(route('marketing.leads.index', ['property_id' => $property->id]))
+        ->assertSee('Lead Perumahan Pilihan')
+        ->assertSee('Perumahan Pilihan')
+        ->assertDontSee('Lead Perumahan Lain');
 });
 
 it('keeps prospect data private to its creator while allowing admins to see all records', function () {
@@ -153,17 +186,18 @@ it('accepts Booking and Survey as prospect categories', function () {
     }
 });
 
-it('rejects categories and sources that are not in the marketing options', function () {
+it('rejects invalid properties, categories, and sources when creating a lead', function () {
     $user = createMarketingLeadFeatureTestUser();
 
     $this->actingAs($user)
         ->post(route('marketing.leads.store'), [
             'name' => 'Prospek Tidak Valid',
             'date_received' => '2026-10-14',
+            'property_id' => 999,
             'category' => 'Closing',
             'source' => 'Unknown',
         ])
-        ->assertSessionHasErrors(['category', 'source']);
+        ->assertSessionHasErrors(['property_id', 'category', 'source']);
 
     $this->assertDatabaseCount('marketing_leads', 0);
 });

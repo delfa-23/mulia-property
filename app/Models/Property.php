@@ -84,4 +84,9 @@ class Property extends Model
     {
         return $this->hasMany(ConstructionStage::class);
     }
+
+    public function bookingPaymentSchedules(): HasMany
+    {
+        return $this->hasMany(BookingPaymentSchedule::class)->orderBy('sort_order')->orderBy('id');
+    }
 }

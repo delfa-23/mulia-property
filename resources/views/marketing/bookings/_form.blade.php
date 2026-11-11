@@ -3,9 +3,6 @@
     $paymentTermsLocked = $paymentTermsLocked ?? false;
     $akadFeeLocked = $paymentTermsLocked && ! auth()->user()->isAdmin();
     $currentAkadFee = old('akad_fee', $booking?->akad_fee ?? 0);
-    $currentDpPaid = old('dp_paid_amount', $paymentSummary['dp_paid'] ?? 0);
-    $currentAkadStage = collect($paymentSummary['stages'] ?? '')->firstWhere('key', 'akad_fee');
-    $currentAkadPaid = old('akad_paid_amount', data_get($currentAkadStage, 'paid', 0));
 @endphp
 
 <div
@@ -140,11 +137,11 @@
 
     <div class="space-y-4">
         <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
-            <p class="font-semibold">Skema pembayaran harga rumah</p>
-            <p class="mt-1">Total pembayaran DP sampai lunas adalah 100% harga rumah: Rp <span x-text="formatRupiah(housePrice)"></span>.</p>
-            <p>Jika ada pembayaran dari bank, nominalnya ikut dicatat sebagai pembayaran DP.</p>
+            <p class="font-semibold">Skema pembayaran booking</p>
+            <p class="mt-1">Total pembayaran booking sampai lunas adalah 100% harga rumah: Rp <span x-text="formatRupiah(housePrice)"></span>.</p>
+            <p>Nominal pembayaran mengikuti jadwal yang diatur admin untuk perumahan ini.</p>
         </div>
-        <p class="text-sm text-zinc-600">Nominal pembayaran DP dikelola melalui menu Pembayaran.</p>
+        <p class="text-sm text-zinc-600">Pembayaran booking dikelola melalui jadwal yang ditentukan admin di menu Pembayaran.</p>
         <div class="max-w-xl">
             <label for="akad-fee" class="mb-2 block text-sm font-medium">Biaya Akad (Rp)</label>
             <input id="akad-fee" type="text" name="akad_fee" value="{{ $currentAkadFee }}" inputmode="decimal" data-currency-input data-currency-min="0" x-on:input="akadFeeAmount = normalizeRupiah($event.target.value)" @readonly($akadFeeLocked) required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
@@ -153,16 +150,16 @@
     </div>
     @if(isset($paymentSummary))
         @php
-            $dpProgress = collect($paymentSummary['stages'])->firstWhere('key', 'dp');
+            $bookingProgress = collect($paymentSummary['stages'])->whereIn('stage', ['dp', 'booking', 'booking_balance'])->sum('remaining');
             $akadProgress = collect($paymentSummary['stages'])->firstWhere('key', 'akad_fee');
         @endphp
-        <section class="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm dark:border-blue-900 dark:bg-blue-950/30" aria-label="Ringkasan pembayaran DP">
-            <h3 class="font-semibold text-blue-950 dark:text-blue-100">Progres DP customer</h3>
-            <p>Target pembayaran DP: 100% harga rumah (Rp {{ number_format($paymentSummary['dp_total'], 0, ',', '.') }})</p>
-            <p>Sudah dibayar: Rp {{ number_format($paymentSummary['dp_paid'], 0, ',', '.') }} · {{ number_format($paymentSummary['dp_paid_percentage'], 2) }}% dari harga rumah</p>
-            <p>Sisa pembayaran DP: Rp {{ number_format($dpProgress['remaining'], 0, ',', '.') }}.</p>
+        <section class="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm dark:border-blue-900 dark:bg-blue-950/30" aria-label="Ringkasan pembayaran booking">
+            <h3 class="font-semibold text-blue-950 dark:text-blue-100">Progres pembayaran booking</h3>
+            <p>Target pembayaran booking: 100% harga rumah (Rp {{ number_format($paymentSummary['house_price'], 0, ',', '.') }})</p>
+            <p>Sudah dibayar: Rp {{ number_format($paymentSummary['booking_paid'], 0, ',', '.') }} · {{ number_format($paymentSummary['booking_paid_percentage'], 2) }}% dari harga rumah</p>
+            <p>Sisa pembayaran booking: Rp {{ number_format($bookingProgress, 0, ',', '.') }}.</p>
             <div class="h-2 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900">
-                <div class="h-full rounded-full bg-blue-600" style="width: {{ $dpProgress['paid_percentage'] }}%"></div>
+                <div class="h-full rounded-full bg-blue-600" style="width: {{ $paymentSummary['booking_paid_percentage'] }}%"></div>
             </div>
         </section>
         <section class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/30" aria-label="Ringkasan pembayaran biaya akad">
@@ -176,7 +173,7 @@
         </section>
     @endif
     @if($paymentTermsLocked && ! auth()->user()->isAdmin())
-        <p class="text-sm text-amber-700">Harga dan biaya akad dikunci setelah pembayaran dicatat. Total DP dan biaya akad yang sudah dibayar tidak dapat dikurangi.</p>
+        <p class="text-sm text-amber-700">Harga dan biaya akad dikunci setelah pembayaran dicatat. Total pembayaran booking dan biaya akad yang sudah dibayar tidak dapat dikurangi.</p>
     @elseif(auth()->user()->isAdmin())
         <p class="text-sm text-amber-700">Sebagai admin, biaya akad tetap dapat diperbarui meskipun pembayaran sudah dicatat. Nilai baru tidak boleh lebih kecil dari biaya akad yang sudah dibayar.</p>
     @endif

@@ -10,6 +10,9 @@
             <p class="mt-1 text-sm text-gray-600">
                 Perbarui informasi property / perumahan.
             </p>
+            <a href="{{ route('admin.properties.payment-schedules.index', $property) }}" class="mt-3 inline-flex rounded-lg border border-blue-300 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                Atur Jadwal Pembayaran Booking
+            </a>
         </div>
 
         @if ($errors->any())

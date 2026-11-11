@@ -14,10 +14,11 @@ class BookingPaymentFinanceSync
             throw new \InvalidArgumentException('Pembayaran yang belum disetujui tidak dapat masuk laporan finance.');
         }
 
-        $payment->loadMissing('booking.lot.block');
+        $payment->loadMissing(['booking.lot.block', 'paymentSchedule']);
         $booking = $payment->booking;
-        $stageLabel = match ($payment->stage) {
-            'dp', 'bank_settlement' => 'DP',
+        $stageLabel = $payment->paymentSchedule?->title ?? match ($payment->stage) {
+            'dp', 'bank_settlement', 'booking' => 'Pembayaran Booking',
+            'booking_balance' => 'Sisa Pembayaran Booking',
             'akad_fee' => 'Biaya Akad',
             default => Str::headline($payment->stage),
         };

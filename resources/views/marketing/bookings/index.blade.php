@@ -81,7 +81,7 @@
                             <th class="px-6 py-3">Kavling</th>
                             <th class="px-6 py-3">Perumahan</th>
                             <th class="px-6 py-3">Customer</th>
-                            <th class="px-6 py-3">Pembayaran DP</th>
+                            <th class="px-6 py-3">Pembayaran Booking</th>
                             <th class="px-6 py-3">Sales</th>
                             <th class="px-6 py-3">Status</th>
                             <th class="px-6 py-3 text-right">Aksi</th>
@@ -92,10 +92,9 @@
                             <tr>
                                 @php
                                     $housePrice = (float) ($booking->house_price_snapshot ?? $booking->lot->house_price);
-                                    $dpPaid = (float) $booking->payments->whereIn('stage', ['dp', 'bank_settlement'])->sum('amount');
-                                    $dpPaidPercentage = $housePrice > 0 ? min(100, $dpPaid / $housePrice * 100) : 0;
-                                    $dpTotal = $housePrice;
-                                    $dpTargetProgress = $dpTotal > 0 ? min(100, $dpPaid / $dpTotal * 100) : 0;
+                                    $bookingPaid = (float) $booking->payments->whereIn('stage', ['dp', 'bank_settlement', 'booking', 'booking_balance'])->where('approval_status', 'approved')->sum('amount');
+                                    $bookingPaidPercentage = $housePrice > 0 ? min(100, $bookingPaid / $housePrice * 100) : 0;
+                                    $bookingTargetProgress = $housePrice > 0 ? min(100, $bookingPaid / $housePrice * 100) : 0;
                                     $statusClasses = [
                                         'booking' => 'bg-amber-100 text-amber-900 ring-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800',
                                         'process' => 'bg-sky-100 text-sky-900 ring-sky-300 dark:bg-sky-950 dark:text-sky-200 dark:ring-sky-800',
@@ -122,16 +121,16 @@
                                 <td class="px-6 py-4">
                                     <div class="min-w-48 space-y-2">
                                         <div class="flex items-center justify-between gap-3">
-                                            <span class="text-xs font-medium text-zinc-500">DP terbayar</span>
-                                            <span class="text-sm font-bold text-orange-700 dark:text-orange-400">{{ number_format($dpPaidPercentage, 2) }}%</span>
+                                            <span class="text-xs font-medium text-zinc-500">Pembayaran booking terbayar</span>
+                                            <span class="text-sm font-bold text-orange-700 dark:text-orange-400">{{ number_format($bookingPaidPercentage, 2) }}%</span>
                                         </div>
-                                        <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Rp {{ number_format($dpPaid, 0, ',', '.') }}</p>
-                                        <div class="h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700" role="progressbar" aria-label="Progres pembayaran DP" aria-valuenow="{{ round($dpTargetProgress) }}" aria-valuemin="0" aria-valuemax="100">
-                                            <div class="h-full rounded-full bg-blue-600" style="width: {{ $dpTargetProgress }}%"></div>
+                                        <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Rp {{ number_format($bookingPaid, 0, ',', '.') }}</p>
+                                        <div class="h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700" role="progressbar" aria-label="Progres pembayaran booking" aria-valuenow="{{ round($bookingTargetProgress) }}" aria-valuemin="0" aria-valuemax="100">
+                                            <div class="h-full rounded-full bg-blue-600" style="width: {{ $bookingTargetProgress }}%"></div>
                                         </div>
                                         <div class="flex justify-between gap-3 text-xs text-zinc-500">
-                                            <span>Target Rp {{ number_format($dpTotal, 0, ',', '.') }}</span>
-                                            <span>Sisa Rp {{ number_format(max(0, $dpTotal - $dpPaid), 0, ',', '.') }}</span>
+                                            <span>Target Rp {{ number_format($housePrice, 0, ',', '.') }}</span>
+                                            <span>Sisa Rp {{ number_format(max(0, $housePrice - $bookingPaid), 0, ',', '.') }}</span>
                                         </div>
                                         <span class="block text-[11px] text-zinc-400">Termasuk pembayaran dari bank</span>
                                     </div>

@@ -14,6 +14,7 @@ class BookingPaymentOrder extends Model
 
     protected $fillable = [
         'booking_id',
+        'booking_payment_schedule_id',
         'stage',
         'amount',
         'order_id',
@@ -40,5 +41,10 @@ class BookingPaymentOrder extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function paymentSchedule(): BelongsTo
+    {
+        return $this->belongsTo(BookingPaymentSchedule::class, 'booking_payment_schedule_id');
     }
 }

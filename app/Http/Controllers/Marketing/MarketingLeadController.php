@@ -23,6 +23,7 @@ class MarketingLeadController extends Controller
             'search' => ['nullable', 'string', 'max:255'],
             'category' => ['nullable', Rule::in(MarketingLead::CATEGORIES)],
             'source' => ['nullable', Rule::in(MarketingLead::SOURCES)],
+            'property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'sales_id' => ['nullable', 'integer', 'exists:sales,id'],
             'assigned_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'archived' => ['nullable', 'boolean'],
@@ -37,6 +38,7 @@ class MarketingLeadController extends Controller
 
         $leads = $query
             ->with([
+                'property:id,name',
                 'sales:id,name',
                 'assignedUser:id,name',
                 'latestBooking' => function ($query) use ($access, $request): void {
@@ -63,6 +65,7 @@ class MarketingLeadController extends Controller
             })
             ->when($filters['category'] ?? null, fn (Builder $query, string $category): Builder => $query->where('category', $category))
             ->when($filters['source'] ?? null, fn (Builder $query, string $source): Builder => $query->where('source', $source))
+            ->when($filters['property_id'] ?? null, fn (Builder $query, int $propertyId): Builder => $query->where('property_id', $propertyId))
             ->when($filters['sales_id'] ?? null, fn (Builder $query, int $salesId): Builder => $query->where('sales_id', $salesId))
             ->when(
                 $access->canManageTeam($request->user()) && isset($filters['assigned_user_id']),
@@ -80,6 +83,7 @@ class MarketingLeadController extends Controller
             'leads' => $leads,
             'categories' => MarketingLead::CATEGORIES,
             'sources' => MarketingLead::SOURCES,
+            'propertyOptions' => Property::query()->orderBy('name')->get(['id', 'name']),
             'salesOptions' => Sales::query()->orderBy('name')->get(['id', 'name']),
             'teamMembers' => $access->canManageTeam($request->user()) ? $this->marketingUsers() : collect(),
             'totalLeads' => (clone $visibleLeads)->count(),
@@ -113,6 +117,7 @@ class MarketingLeadController extends Controller
     {
         $access->authorizeLead($request->user(), $lead);
         $lead->load([
+            'property:id,name',
             'sales:id,name',
             'assignedUser:id,name',
             'bookings' => function ($query) use ($access, $request): void {
@@ -197,6 +202,7 @@ class MarketingLeadController extends Controller
             'categories' => MarketingLead::CATEGORIES,
             'categoryLabels' => MarketingLead::CATEGORY_LABELS,
             'sources' => MarketingLead::SOURCES,
+            'propertyOptions' => Property::query()->orderBy('name')->get(['id', 'name']),
             'salesOptions' => Sales::query()->orderBy('name')->get(['id', 'name']),
             'teamMembers' => $access->canManageTeam($user) ? $this->marketingUsers() : collect(),
         ];
@@ -210,6 +216,7 @@ class MarketingLeadController extends Controller
             'date_received' => ['required', 'date'],
             'phone' => ['nullable', 'string', 'max:50'],
             'domicile' => ['nullable', 'string', 'max:255'],
+            'property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'sales_id' => ['nullable', 'integer', 'exists:sales,id'],
             'category' => ['required', Rule::in(MarketingLead::CATEGORIES)],
             'source' => ['required', Rule::in(MarketingLead::SOURCES)],

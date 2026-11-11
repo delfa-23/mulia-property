@@ -144,7 +144,7 @@
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 class="text-lg font-semibold">Rincian Pembayaran</h2>
-                    <p class="mt-1 text-sm text-zinc-500">DP dibayar bertahap sampai lunas 100% harga rumah. Pembayaran dari bank juga dicatat sebagai DP.</p>
+                    <p class="mt-1 text-sm text-zinc-500">Pembayaran booking mengikuti jadwal yang ditentukan admin sampai lunas 100% harga rumah.</p>
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-zinc-500">Harga Kavling</p>
@@ -154,7 +154,7 @@
 
             <div>
                 <div class="flex justify-between gap-4 text-sm">
-                    <span>Terbayar dari harga kavling ({{ number_format($paymentSummary['paid_percentage'], 2) }}%)</span>
+                    <span>Pembayaran booking terbayar dari harga kavling ({{ number_format($paymentSummary['booking_paid_percentage'], 2) }}%)</span>
                     <span>Rp {{ number_format($paymentSummary['total_paid_price'], 0, ',', '.') }}</span>
                 </div>
                 <div class="mt-2 h-2 overflow-hidden rounded-full bg-zinc-200">
@@ -172,11 +172,6 @@
                             </flux:badge>
                         </div>
                         <dl class="mt-3 space-y-2 text-sm">
-                            @if($stage['key'] === 'dp')
-                                <div class="flex justify-between gap-2"><dt class="text-zinc-500">Target pembayaran DP</dt><dd>100% harga · Rp {{ number_format($stage['due'], 0, ',', '.') }}</dd></div>
-                                <div class="flex justify-between gap-2"><dt class="text-zinc-500">DP dibayar dari harga rumah</dt><dd>{{ number_format($paymentSummary['dp_paid_percentage'], 2) }}% · Rp {{ number_format($paymentSummary['dp_paid'], 0, ',', '.') }}</dd></div>
-                                <div class="flex justify-between gap-2"><dt class="text-zinc-500">Total DP terbayar</dt><dd>{{ number_format($stage['paid_percentage'], 2) }}%</dd></div>
-                            @endif
                             <div class="flex justify-between gap-2"><dt class="text-zinc-500">Tagihan</dt><dd>Rp {{ number_format($stage['due'], 0, ',', '.') }}</dd></div>
                             <div class="flex justify-between gap-2"><dt class="text-zinc-500">Terbayar</dt><dd>Rp {{ number_format($stage['paid'], 0, ',', '.') }}</dd></div>
                             <div class="flex justify-between gap-2 font-medium"><dt>Sisa</dt><dd>Rp {{ number_format($stage['remaining'], 0, ',', '.') }}</dd></div>
@@ -194,6 +189,87 @@
                 </a>
             </div>
         </section>
+
+        @if($booking->payments->isNotEmpty() || $booking->paymentOrders->isNotEmpty())
+            <section class="space-y-4 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-900">
+                <div>
+                    <h2 class="text-lg font-semibold">Riwayat Transaksi Pembayaran</h2>
+                    <p class="mt-1 text-sm text-zinc-500">Rincian pembayaran manual dan transaksi Midtrans untuk booking ini.</p>
+                </div>
+
+                <div class="grid gap-4 lg:grid-cols-2">
+                    @if($booking->payments->isNotEmpty())
+                        <section class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
+                            <h3 class="font-semibold">Riwayat pembayaran</h3>
+                            <ul class="mt-2 divide-y divide-zinc-200 dark:divide-zinc-700">
+                                @foreach($booking->payments as $payment)
+                                    <li class="space-y-1 py-3 text-sm text-zinc-600 dark:text-zinc-300">
+                                        <p class="font-medium text-zinc-800 dark:text-zinc-100">
+                                            {{ $payment->paid_at?->format('d/m/Y H:i') ?? '-' }}
+                                            · {{ $payment->paymentSchedule?->title ?? match ($payment->stage) {
+                                                'dp', 'bank_settlement', 'booking' => 'Pembayaran Booking',
+                                                'booking_balance' => 'Sisa Pembayaran Booking',
+                                                'akad_fee' => 'Biaya Akad',
+                                                default => \Illuminate\Support\Str::headline($payment->stage),
+                                            } }}
+                                            · Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}
+                                        </p>
+                                        <p>
+                                            {{ $payment->payment_method ?: 'Metode tidak tersedia' }}
+                                            @if($payment->reference) · Referensi {{ $payment->reference }} @endif
+                                            @if($payment->recordedBy) · PIC {{ $payment->recordedBy->name }} @endif
+                                        </p>
+                                        @if($payment->paymentOrder)
+                                            <p>
+                                                Order {{ $payment->paymentOrder->order_id }}
+                                                · ID transaksi {{ $payment->paymentOrder->transaction_id ?: '-' }}
+                                            </p>
+                                        @endif
+                                        @if($payment->notes)
+                                            <p>{{ $payment->notes }}</p>
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </section>
+                    @endif
+
+                    @if($booking->paymentOrders->isNotEmpty())
+                        <section class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700">
+                            <h3 class="font-semibold">Riwayat transaksi Midtrans</h3>
+                            <ul class="mt-2 divide-y divide-zinc-200 dark:divide-zinc-700">
+                                @foreach($booking->paymentOrders as $paymentOrder)
+                                    <li class="space-y-1 py-3 text-sm text-zinc-600 dark:text-zinc-300">
+                                        <p class="font-medium text-zinc-800 dark:text-zinc-100">
+                                            {{ $paymentOrder->created_at?->format('d/m/Y H:i') ?? '-' }}
+                                            · {{ $paymentOrder->paymentSchedule?->title ?? match ($paymentOrder->stage) {
+                                                'dp', 'booking' => 'Pembayaran Booking',
+                                                'booking_balance' => 'Sisa Pembayaran Booking',
+                                                'akad_fee' => 'Biaya Akad',
+                                                default => \Illuminate\Support\Str::headline($paymentOrder->stage),
+                                            } }}
+                                            · {{ [
+                                                'pending' => 'Menunggu konfirmasi',
+                                                'paid' => 'Berhasil',
+                                                'failed' => 'Gagal',
+                                                'expired' => 'Kedaluwarsa',
+                                                'cancelled' => 'Dibatalkan',
+                                            ][$paymentOrder->status] ?? ucfirst($paymentOrder->status) }}
+                                            · Rp {{ number_format((float) $paymentOrder->amount, 0, ',', '.') }}
+                                        </p>
+                                        <p>
+                                            Order {{ $paymentOrder->order_id }}
+                                            · ID transaksi {{ $paymentOrder->transaction_id ?: '-' }}
+                                            · Metode {{ $paymentOrder->payment_type ? str_replace('_', ' ', $paymentOrder->payment_type) : '-' }}
+                                        </p>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </section>
+                    @endif
+                </div>
+            </section>
+        @endif
 
         <section class="rounded-xl border border-zinc-200 bg-white p-6">
             <h2 class="text-lg font-semibold">Riwayat Booking</h2>

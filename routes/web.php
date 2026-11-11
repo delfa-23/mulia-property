@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\AlertController;
 use App\Http\Controllers\Admin\BlockController;
+use App\Http\Controllers\Admin\BookingPaymentScheduleController;
 use App\Http\Controllers\Admin\BudgetController as AdminBudgetController;
 use App\Http\Controllers\Admin\CommonFacilityController;
 use App\Http\Controllers\Admin\ConstructionStageController;
@@ -152,6 +153,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         Route::resource('properties', PropertyController::class)
             ->except(['show']);
+        Route::get('/properties/{property}/payment-schedules', [BookingPaymentScheduleController::class, 'index'])
+            ->name('properties.payment-schedules.index');
+        Route::post('/properties/{property}/payment-schedules', [BookingPaymentScheduleController::class, 'store'])
+            ->name('properties.payment-schedules.store');
+        Route::put('/properties/{property}/payment-schedules/{bookingPaymentSchedule}', [BookingPaymentScheduleController::class, 'update'])
+            ->name('properties.payment-schedules.update');
+        Route::delete('/properties/{property}/payment-schedules/{bookingPaymentSchedule}', [BookingPaymentScheduleController::class, 'destroy'])
+            ->name('properties.payment-schedules.destroy');
         Route::post('/properties/{property}/site-plan-areas', [SitePlanAreaController::class, 'store'])
             ->name('properties.site-plan-areas.store');
         Route::put('/properties/{property}/site-plan-areas/{sitePlanArea}', [SitePlanAreaController::class, 'update'])

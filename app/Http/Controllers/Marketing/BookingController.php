@@ -76,7 +76,6 @@ class BookingController extends Controller
     public function store(
         Request $request,
         ActivityLogger $activityLogger,
-        BookingPaymentFinanceSync $financeSync,
         MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
         $validated = $this->validated($request);
@@ -89,10 +88,6 @@ class BookingController extends Controller
         }
         $this->ensureLotBelongsToProperty($validated);
         unset($validated['property_id']);
-        $dpPaidAmount = (float) ($validated['dp_paid_amount'] ?? 0);
-        $akadPaidAmount = (float) ($validated['akad_paid_amount'] ?? 0);
-        unset($validated['dp_paid_amount']);
-        unset($validated['akad_paid_amount']);
 
         if ($validated['status'] !== 'booking') {
             throw ValidationException::withMessages([
@@ -100,7 +95,7 @@ class BookingController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($request, $validated, $dpPaidAmount, $akadPaidAmount, $activityLogger, $financeSync): void {
+        DB::transaction(function () use ($request, $validated, $activityLogger): void {
             $this->resolveCustomer($validated);
             $lot = Lot::query()->lockForUpdate()->findOrFail($validated['lot_id']);
             $this->ensureLotAvailable($lot);
@@ -111,32 +106,6 @@ class BookingController extends Controller
                 'house_price_snapshot' => $lot->house_price,
                 'dp_percentage' => Booking::DP_PERCENTAGE,
             ]);
-
-            if ($dpPaidAmount > (float) $booking->house_price_snapshot + 0.009) {
-                throw ValidationException::withMessages([
-                    'dp_paid_amount' => 'Nominal DP yang sudah dibayar tidak boleh melebihi harga rumah.',
-                ]);
-            }
-
-            if ($akadPaidAmount > (float) $booking->akad_fee + 0.009) {
-                throw ValidationException::withMessages([
-                    'akad_paid_amount' => 'Biaya akad yang sudah dibayar tidak boleh melebihi total biaya akad.',
-                ]);
-            }
-
-            if ($akadPaidAmount > 0 && $dpPaidAmount + 0.009 < (float) $booking->house_price_snapshot) {
-                throw ValidationException::withMessages([
-                    'akad_paid_amount' => 'Pembayaran biaya akad dapat dicatat setelah DP harga rumah lunas.',
-                ]);
-            }
-
-            if ($dpPaidAmount > 0) {
-                $this->recordBookingPayment($booking, 'dp', $dpPaidAmount, $request, $activityLogger, $financeSync, 'Pembayaran DP awal dicatat dari form booking.');
-            }
-
-            if ($akadPaidAmount > 0) {
-                $this->recordBookingPayment($booking, 'akad_fee', $akadPaidAmount, $request, $activityLogger, $financeSync, 'Pembayaran biaya akad awal dicatat dari form booking.');
-            }
 
             $lot->update(['status' => $this->lotStatusFor($booking->status, $booking->payments()->exists())]);
 
@@ -169,7 +138,10 @@ class BookingController extends Controller
             'histories.changedBy',
             'payments.recordedBy',
             'payments.paymentOrder',
+            'payments.paymentSchedule',
+            'paymentOrders.paymentSchedule',
             'paymentOrders',
+            'lot.block.property.bookingPaymentSchedules',
             'documentProcess',
             'pemberkasanDocuments.uploadedBy',
         ]);
@@ -295,17 +267,9 @@ class BookingController extends Controller
         }
         $this->ensureLotBelongsToProperty($validated);
         unset($validated['property_id']);
-        $dpPaidAmount = isset($validated['dp_paid_amount'])
-            ? (float) $validated['dp_paid_amount']
-            : null;
-        $akadPaidAmount = isset($validated['akad_paid_amount'])
-            ? (float) $validated['akad_paid_amount']
-            : null;
-        unset($validated['dp_paid_amount']);
-        unset($validated['akad_paid_amount']);
         $this->ensureStatusOrder($booking, $validated['status'], $paymentSummaryService);
 
-        DB::transaction(function () use ($request, $booking, $validated, $dpPaidAmount, $akadPaidAmount, $activityLogger, $financeSync): void {
+        DB::transaction(function () use ($request, $booking, $validated, $activityLogger): void {
             $this->resolveCustomer($validated);
             $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $lotIds = collect([$lockedBooking->lot_id, $validated['lot_id']])->unique()->sort()->values();
@@ -340,66 +304,22 @@ class BookingController extends Controller
                 ? $lockedBooking->house_price_snapshot
                 : $targetLot->house_price;
             $validated['dp_percentage'] = Booking::DP_PERCENTAGE;
-            $housePrice = (float) $validated['house_price_snapshot'];
-            $existingDpPaid = (float) $lockedBooking->payments()
-                ->where('approval_status', 'approved')
-                ->whereIn('stage', ['dp', 'bank_settlement'])
-                ->sum('amount');
             $existingAkadPaid = (float) $lockedBooking->payments()
                 ->where('approval_status', 'approved')
                 ->where('stage', 'akad_fee')
                 ->sum('amount');
-            $requestedDpPaid = $dpPaidAmount === null
-                ? $existingDpPaid
-                : round($dpPaidAmount, 2);
-            $requestedAkadPaid = $akadPaidAmount === null
-                ? $existingAkadPaid
-                : round($akadPaidAmount, 2);
-            $totalDp = round($housePrice * Booking::DP_PERCENTAGE / 100, 2);
-            $additionalDpPaid = round($requestedDpPaid - $existingDpPaid, 2);
-            $additionalAkadPaid = round($requestedAkadPaid - $existingAkadPaid, 2);
-
-            if ($requestedDpPaid + 0.009 < $existingDpPaid) {
+            if ($existingAkadPaid > (float) $validated['akad_fee'] + 0.009) {
                 throw ValidationException::withMessages([
-                    'dp_paid_amount' => 'Nominal DP yang sudah dibayar tidak dapat lebih kecil dari pembayaran yang tercatat.',
-                ]);
-            }
-
-            if ($requestedAkadPaid + 0.009 < $existingAkadPaid) {
-                throw ValidationException::withMessages([
-                    'akad_paid_amount' => 'Nominal biaya akad yang sudah dibayar tidak dapat lebih kecil dari pembayaran yang tercatat.',
-                ]);
-            }
-
-            if ($requestedDpPaid > $totalDp + 0.009) {
-                throw ValidationException::withMessages([
-                    'dp_paid_amount' => 'Nominal DP yang sudah dibayar tidak boleh melebihi harga rumah.',
-                ]);
-            }
-
-            if ($requestedAkadPaid > (float) $validated['akad_fee'] + 0.009) {
-                throw ValidationException::withMessages([
-                    'akad_paid_amount' => 'Biaya akad yang sudah dibayar tidak boleh melebihi total biaya akad.',
-                ]);
-            }
-
-            if (
-                $requestedAkadPaid > $existingAkadPaid + 0.009 &&
-                $requestedDpPaid + 0.009 < $totalDp
-            ) {
-                throw ValidationException::withMessages([
-                    'akad_paid_amount' => 'Pembayaran biaya akad dapat dicatat setelah DP harga rumah lunas.',
+                    'akad_fee' => 'Biaya akad tidak boleh lebih kecil dari nominal yang sudah dibayar.',
                 ]);
             }
 
             if (
                 $hasPendingPaymentOrders &&
-                ($additionalDpPaid > 0.009 ||
-                    $additionalAkadPaid > 0.009 ||
-                    in_array($validated['status'], ['cancelled', 'finish'], true))
+                in_array($validated['status'], ['cancelled', 'finish'], true)
             ) {
                 throw ValidationException::withMessages([
-                    'status' => 'Selesaikan atau tunggu konfirmasi pembayaran Midtrans sebelum mengubah pembayaran atau membatalkan booking.',
+                    'status' => 'Selesaikan atau tunggu konfirmasi pembayaran Midtrans sebelum membatalkan atau menyelesaikan booking.',
                 ]);
             }
 
@@ -431,14 +351,6 @@ class BookingController extends Controller
                     ]);
             }
 
-            if ($additionalDpPaid > 0.009) {
-                $this->recordBookingPayment($lockedBooking, 'dp', $additionalDpPaid, $request, $activityLogger, $financeSync, 'Tambahan pembayaran DP dicatat dari form booking.');
-            }
-
-            if ($additionalAkadPaid > 0.009) {
-                $this->recordBookingPayment($lockedBooking, 'akad_fee', $additionalAkadPaid, $request, $activityLogger, $financeSync, 'Tambahan pembayaran biaya akad dicatat dari form booking.');
-            }
-
             if ($oldLot && $oldLot->id !== $targetLot->id) {
                 $oldLot->update(['status' => 'available']);
             }
@@ -464,20 +376,19 @@ class BookingController extends Controller
         Request $request,
         Booking $booking,
         ActivityLogger $activityLogger,
-        BookingPaymentFinanceSync $financeSync,
         BookingPaymentSummaryService $paymentSummaryService,
         MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
         $leadAccess->authorizeBooking($request->user(), $booking);
 
-        foreach (['amount'] as $currencyField) {
-            if ($request->filled($currencyField)) {
-                $request->merge([$currencyField => $this->normalizeCurrencyInput((string) $request->input($currencyField))]);
-            }
+        if ($request->input('stage') === 'akad_fee' && $request->filled('amount')) {
+            $request->merge([
+                'amount' => $this->normalizeCurrencyInput((string) $request->input('amount')),
+            ]);
         }
         $validated = $request->validate([
-            'stage' => ['required', Rule::in(['dp', 'akad_fee'])],
-            'amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.01'],
+            'stage' => ['required', 'string', 'max:100'],
+            'amount' => ['exclude_unless:stage,akad_fee', 'required', 'numeric', 'decimal:0,2', 'min:0.01'],
             'paid_at' => ['required', 'date', 'before_or_equal:now'],
             'payment_method' => ['nullable', 'string', 'max:100'],
             'reference' => ['nullable', 'string', 'max:255'],
@@ -495,28 +406,71 @@ class BookingController extends Controller
             }
 
             $summary = $paymentSummaryService->summarize($lockedBooking);
-            $nextStage = collect($summary['stages'])->first(fn (array $stage): bool => $stage['remaining'] > 0.009);
+            $paymentStage = collect($summary['stages'])
+                ->first(fn (array $stage): bool => $stage['key'] === $validated['stage']);
 
-            if ($nextStage === null || $validated['stage'] !== $nextStage['key']) {
+            if ($paymentStage === null || $paymentStage['remaining'] <= 0.009) {
                 throw ValidationException::withMessages([
-                    'stage' => 'Pembayaran harus mengikuti urutan DP 100% harga rumah, lalu biaya akad.',
+                    'stage' => 'Tahap pembayaran tidak ditemukan atau sudah lunas.',
+                ]);
+            }
+            if (! $paymentStage['configured']) {
+                throw ValidationException::withMessages([
+                    'stage' => 'Admin belum mengatur jadwal pembayaran untuk perumahan ini.',
                 ]);
             }
 
-            if ((float) $validated['amount'] > $nextStage['remaining'] + 0.009) {
+            $amount = $paymentStage['stage'] === 'akad_fee'
+                ? (float) $validated['amount']
+                : (float) $paymentStage['remaining'];
+
+            if ($amount > $paymentStage['remaining'] + 0.009) {
                 throw ValidationException::withMessages([
                     'amount' => 'Nominal melebihi sisa tagihan tahap ini.',
                 ]);
             }
-
-            if ($lockedBooking->paymentOrders()->where('stage', $validated['stage'])->where('status', 'pending')->exists()) {
+            if (
+                $paymentStage['stage'] !== 'akad_fee' &&
+                $amount > $summary['house_price'] - $summary['booking_paid'] + 0.009
+            ) {
                 throw ValidationException::withMessages([
-                    'stage' => 'Selesaikan atau tunggu konfirmasi pembayaran Midtrans untuk tahap ini sebelum mencatat pembayaran manual.',
+                    'stage' => 'Nominal jadwal melebihi sisa harga rumah. Minta admin menyesuaikan jadwal pembayaran perumahan.',
+                ]);
+            }
+
+            $pendingOrderExists = $lockedBooking->paymentOrders()
+                ->where('stage', $paymentStage['stage'])
+                ->where('status', 'pending')
+                ->when(
+                    $paymentStage['schedule_id'] === null,
+                    fn ($query) => $query->whereNull('booking_payment_schedule_id'),
+                    fn ($query) => $query->where('booking_payment_schedule_id', $paymentStage['schedule_id']),
+                )
+                ->exists();
+            $pendingManualPaymentExists = $lockedBooking->payments()
+                ->where('stage', $paymentStage['stage'])
+                ->where('approval_status', 'pending')
+                ->when(
+                    $paymentStage['schedule_id'] === null,
+                    fn ($query) => $query->whereNull('booking_payment_schedule_id'),
+                    fn ($query) => $query->where('booking_payment_schedule_id', $paymentStage['schedule_id']),
+                )
+                ->exists();
+
+            if ($pendingOrderExists || $pendingManualPaymentExists) {
+                throw ValidationException::withMessages([
+                    'stage' => 'Selesaikan atau tunggu persetujuan pembayaran yang sudah diajukan untuk tahap ini.',
                 ]);
             }
 
             $payment = $lockedBooking->payments()->create([
-                ...collect($validated)->except('proof')->all(),
+                'stage' => $paymentStage['stage'],
+                'booking_payment_schedule_id' => $paymentStage['schedule_id'],
+                'amount' => $amount,
+                'paid_at' => $validated['paid_at'],
+                'payment_method' => $validated['payment_method'] ?? null,
+                'reference' => $validated['reference'] ?? null,
+                'notes' => $validated['notes'] ?? null,
                 'recorded_by' => $request->user()->id,
                 'payment_channel' => 'manual',
                 'approval_status' => 'pending',
@@ -560,7 +514,7 @@ class BookingController extends Controller
         $payments = BookingPayment::query()
             ->where('payment_channel', 'manual')
             ->where('approval_status', 'pending')
-            ->with(['booking.customer', 'booking.lot.block.property', 'recordedBy'])
+            ->with(['booking.customer', 'booking.lot.block.property', 'paymentSchedule', 'recordedBy'])
             ->latest('paid_at')
             ->paginate(15);
 
@@ -632,12 +586,10 @@ class BookingController extends Controller
     /** @return array<string, mixed> */
     private function validated(Request $request, ?Booking $booking = null): array
     {
-        foreach (['akad_fee', 'dp_paid_amount', 'akad_paid_amount'] as $currencyField) {
-            if ($request->filled($currencyField)) {
-                $request->merge([
-                    $currencyField => $this->normalizeCurrencyInput((string) $request->input($currencyField)),
-                ]);
-            }
+        if ($request->filled('akad_fee')) {
+            $request->merge([
+                'akad_fee' => $this->normalizeCurrencyInput((string) $request->input('akad_fee')),
+            ]);
         }
 
         $validated = $request->validate([
@@ -669,14 +621,11 @@ class BookingController extends Controller
                 'after_or_equal:booking_date',
                 Rule::when($request->input('status') === 'booking', ['after:now']),
             ],
-            'dp_paid_amount' => ['sometimes', 'required', 'numeric', 'decimal:0,2', 'min:0'],
-            'akad_paid_amount' => ['sometimes', 'required', 'numeric', 'decimal:0,2', 'min:0'],
+            'dp_paid_amount' => ['prohibited'],
+            'akad_paid_amount' => ['prohibited'],
             'akad_fee' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
             'status' => ['required', Rule::in(['booking', 'process', 'akad', 'finish', 'cancelled'])],
             'notes' => ['nullable', 'string'],
-        ], [
-            'dp_paid_amount.numeric' => 'Nominal DP harus berupa angka Rupiah yang valid.',
-            'akad_paid_amount.numeric' => 'Nominal biaya akad harus berupa angka Rupiah yang valid.',
         ]);
 
         if ($validated['customer_mode'] === 'existing' && empty($validated['customer_id'])) {
@@ -855,11 +804,11 @@ class BookingController extends Controller
 
         if ($status === 'akad') {
             $requiredPayments = collect($paymentSummaryService->summarize($booking)['stages'])
-                ->whereIn('key', ['dp', 'akad_fee']);
+                ->whereIn('stage', ['dp', 'booking', 'booking_balance', 'akad_fee']);
 
             if ($requiredPayments->contains(fn (array $stage): bool => $stage['remaining'] > 0.009)) {
                 throw ValidationException::withMessages([
-                    'status' => 'Total DP dan biaya akad harus lunas sebelum status booking menjadi akad.',
+                    'status' => 'Pembayaran booking dan biaya akad harus lunas sebelum status booking menjadi akad.',
                 ]);
             }
         }
@@ -876,7 +825,7 @@ class BookingController extends Controller
 
             if ($unpaidStages->isNotEmpty()) {
                 throw ValidationException::withMessages([
-                    'status' => 'DP 100% harga rumah dan biaya akad harus lunas sebelum booking dapat diselesaikan.',
+                    'status' => 'Pembayaran booking 100% harga rumah dan biaya akad harus lunas sebelum booking dapat diselesaikan.',
                 ]);
             }
         }

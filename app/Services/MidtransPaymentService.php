@@ -18,9 +18,10 @@ class MidtransPaymentService
 {
     public function __construct(
         private readonly BookingPaymentFinanceSync $financeSync,
+        private readonly BookingPaymentSummaryService $paymentSummaryService,
     ) {}
 
-    public function createCheckout(Booking $booking, string $stage, int $amount, User $user): BookingPaymentOrder
+    public function createCheckout(Booking $booking, string $stageKey, ?int $amount, User $user): BookingPaymentOrder
     {
         $serverKey = config('services.midtrans.server_key');
 
@@ -28,7 +29,7 @@ class MidtransPaymentService
             throw new MidtransGatewayException('Midtrans belum dikonfigurasi. Minta tim teknis mengatur MIDTRANS_SERVER_KEY.');
         }
 
-        $order = DB::transaction(function () use ($booking, $stage, $amount, $user): BookingPaymentOrder {
+        $order = DB::transaction(function () use ($booking, $stageKey, $amount, $user): BookingPaymentOrder {
             $lockedBooking = Booking::query()
                 ->with(['customer', 'lot.block'])
                 ->lockForUpdate()
@@ -46,34 +47,63 @@ class MidtransPaymentService
                 ]);
             }
 
-            $summary = $this->paymentStageSummary($lockedBooking);
-            $nextStage = collect($summary)->first(fn (array $paymentStage): bool => $paymentStage['remaining'] > 0.009);
+            $summary = $this->paymentSummaryService->summarize($lockedBooking);
+            $paymentStage = collect($summary['stages'])
+                ->first(fn (array $paymentStage): bool => $paymentStage['key'] === $stageKey);
 
-            if ($nextStage === null || $stage !== $nextStage['key']) {
+            if ($paymentStage === null || $paymentStage['remaining'] <= 0.009) {
                 throw ValidationException::withMessages([
-                    'stage' => 'Pembayaran harus mengikuti urutan DP, lalu biaya akad.',
+                    'stage' => 'Tahap pembayaran tidak ditemukan atau sudah lunas.',
+                ]);
+            }
+            if (! $paymentStage['configured']) {
+                throw ValidationException::withMessages([
+                    'stage' => 'Admin belum mengatur jadwal pembayaran untuk perumahan ini.',
                 ]);
             }
 
-            if ($amount > $nextStage['remaining']) {
+            $amountToPay = $paymentStage['stage'] === 'akad_fee'
+                ? $amount
+                : (int) floor($paymentStage['remaining']);
+
+            if ($amountToPay === null || $amountToPay < 1) {
+                throw ValidationException::withMessages([
+                    'amount' => 'Nominal pembayaran tahap ini tidak valid.',
+                ]);
+            }
+
+            if ($amountToPay > $paymentStage['remaining'] + 0.009) {
                 throw ValidationException::withMessages([
                     'amount' => 'Nominal melebihi sisa tagihan tahap ini.',
+                ]);
+            }
+            if (
+                $paymentStage['stage'] !== 'akad_fee' &&
+                $amountToPay > $summary['house_price'] - $summary['booking_paid'] + 0.009
+            ) {
+                throw ValidationException::withMessages([
+                    'stage' => 'Nominal jadwal melebihi sisa harga rumah. Minta admin menyesuaikan jadwal pembayaran perumahan.',
                 ]);
             }
 
             $existingOrder = BookingPaymentOrder::query()
                 ->where('booking_id', $lockedBooking->id)
-                ->where('stage', $stage)
+                ->where('stage', $paymentStage['stage'])
+                ->when(
+                    $paymentStage['schedule_id'] === null,
+                    fn ($query) => $query->whereNull('booking_payment_schedule_id'),
+                    fn ($query) => $query->where('booking_payment_schedule_id', $paymentStage['schedule_id']),
+                )
                 ->where('status', 'pending')
                 ->lockForUpdate()
                 ->first();
 
             if ($existingOrder) {
-                if ((float) $existingOrder->amount === (float) $amount && $existingOrder->redirect_url) {
+                if ((float) $existingOrder->amount === (float) $amountToPay && $existingOrder->redirect_url) {
                     return $existingOrder;
                 }
 
-                if ($stage === 'akad_fee') {
+                if ($paymentStage['stage'] === 'akad_fee') {
                     $existingOrder->update([
                         'status' => 'cancelled',
                         'snap_token' => null,
@@ -90,8 +120,9 @@ class MidtransPaymentService
 
             return BookingPaymentOrder::query()->create([
                 'booking_id' => $lockedBooking->id,
-                'stage' => $stage,
-                'amount' => $amount,
+                'booking_payment_schedule_id' => $paymentStage['schedule_id'],
+                'stage' => $paymentStage['stage'],
+                'amount' => $amountToPay,
                 'order_id' => 'BK'.$lockedBooking->id.'-'.Str::ulid(),
                 'status' => 'pending',
                 'created_by' => $user->id,
@@ -106,7 +137,13 @@ class MidtransPaymentService
         $baseUrl = $isProduction
             ? 'https://app.midtrans.com'
             : 'https://app.sandbox.midtrans.com';
-        $stageLabel = $order->stage === 'dp' ? 'Pembayaran DP' : 'Biaya Akad';
+        $order->loadMissing(['booking.customer', 'paymentSchedule']);
+        $stageLabel = $order->paymentSchedule?->title ?? match ($order->stage) {
+            'dp', 'booking' => 'Pembayaran Booking',
+            'booking_balance' => 'Sisa Pembayaran Booking',
+            'akad_fee' => 'Biaya Akad',
+            default => 'Pembayaran Booking',
+        };
         $customer = $order->booking->customer;
         $payload = [
             'transaction_details' => [
@@ -342,6 +379,7 @@ class MidtransPaymentService
                     ['booking_payment_order_id' => $lockedOrder->id],
                     [
                         'booking_id' => $booking->id,
+                        'booking_payment_schedule_id' => $lockedOrder->booking_payment_schedule_id,
                         'stage' => $lockedOrder->stage,
                         'amount' => $lockedOrder->amount,
                         'paid_at' => now(),
@@ -384,24 +422,6 @@ class MidtransPaymentService
                 'payment_type' => $notification['payment_type'] ?? $lockedOrder->payment_type,
             ]);
         });
-    }
-
-    /** @return list<array{key: string, remaining: float}> */
-    private function paymentStageSummary(Booking $booking): array
-    {
-        $payments = $booking->payments()
-            ->reorder()
-            ->selectRaw('stage, SUM(amount) as total')
-            ->groupBy('stage')
-            ->pluck('total', 'stage');
-        $paidDp = (float) $payments->get('dp', 0) + (float) $payments->get('bank_settlement', 0);
-        $dpTotal = (float) ($booking->house_price_snapshot ?? $booking->lot->house_price);
-        $paidAkad = (float) $payments->get('akad_fee', 0);
-
-        return [
-            ['key' => 'dp', 'remaining' => max(0, round($dpTotal - $paidDp, 2))],
-            ['key' => 'akad_fee', 'remaining' => max(0, round((float) $booking->akad_fee - $paidAkad, 2))],
-        ];
     }
 
     private function amountInCents(string $amount): ?int

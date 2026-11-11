@@ -31,7 +31,12 @@
                             <p class="text-xs text-zinc-500">{{ ucfirst($payment->payment_channel ?? 'manual') }}</p>
                         </div>
                         <div>
-                            <p class="font-medium">{{ $payment->stage === 'akad_fee' ? 'Biaya Akad' : 'Pembayaran Rumah' }}</p>
+                            <p class="font-medium">{{ $payment->paymentSchedule?->title ?? match ($payment->stage) {
+                                'dp', 'bank_settlement', 'booking' => 'Pembayaran Booking',
+                                'booking_balance' => 'Sisa Pembayaran Booking',
+                                'akad_fee' => 'Biaya Akad',
+                                default => \Illuminate\Support\Str::headline($payment->stage),
+                            } }}</p>
                             <p class="text-sm text-zinc-500">{{ $payment->notes ?: '-' }}</p>
                         </div>
                         <div class="text-right">

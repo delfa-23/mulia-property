@@ -4,6 +4,7 @@ use App\Models\Block;
 use App\Models\Booking;
 use App\Models\BookingPayment;
 use App\Models\BookingPaymentOrder;
+use App\Models\BookingPaymentSchedule;
 use App\Models\Customer;
 use App\Models\Division;
 use App\Models\FinanceCashFlow;
@@ -11,8 +12,10 @@ use App\Models\Lot;
 use App\Models\Property;
 use App\Models\User;
 use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 it('creates a Midtrans Snap checkout for the next booking payment stage', function () {
     Http::preventStrayRequests();
@@ -28,27 +31,75 @@ it('creates a Midtrans Snap checkout for the next booking payment stage', functi
     ]);
     $user = makeMidtransPaymentTestUser();
     $booking = makeMidtransPaymentTestBooking($user);
+    $schedule = BookingPaymentSchedule::query()->create([
+        'property_id' => $booking->lot->block->property_id,
+        'title' => 'Pembayaran 1',
+        'amount' => 2500000,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
 
     $response = $this->actingAs($user)
         ->post(route('marketing.bookings.payments.midtrans.store', $booking), [
-            'stage' => 'dp',
-            'amount' => '2500000',
+            'stage' => 'booking_schedule_'.$schedule->id,
+            'booking_payment_schedule_id' => $schedule->id,
+            'amount' => '99999999',
         ]);
 
     $response->assertRedirect('https://app.sandbox.midtrans.com/snap/v2/vtweb/snap-token');
     Http::assertSent(fn (ClientRequest $request): bool => $request->url() === 'https://app.sandbox.midtrans.com/snap/v1/transactions'
         && $request['transaction_details']['gross_amount'] === 2500000
+        && $request['item_details'][0]['name'] === 'Pembayaran 1 booking #'.$booking->id
         && $request['customer_details']['first_name'] === 'Pembeli Midtrans'
         && $request['callbacks']['finish'] === route('marketing.bookings.payments.midtrans.return', $booking));
     $this->assertDatabaseHas('booking_payment_orders', [
         'booking_id' => $booking->id,
-        'stage' => 'dp',
+        'booking_payment_schedule_id' => $schedule->id,
+        'stage' => 'booking',
         'amount' => '2500000.00',
         'status' => 'pending',
         'snap_token' => 'snap-token',
     ]);
     $this->assertDatabaseCount('booking_payments', 0);
     $this->assertDatabaseCount('finance_cash_flows', 0);
+});
+
+it('creates a Midtrans checkout for the akad stage before earlier booking stages are paid', function () {
+    Http::preventStrayRequests();
+    Http::fake([
+        'app.sandbox.midtrans.com/snap/v1/transactions' => Http::response([
+            'token' => 'akad-snap-token',
+            'redirect_url' => 'https://app.sandbox.midtrans.com/snap/v2/vtweb/akad-snap-token',
+        ], 201),
+    ]);
+    config([
+        'services.midtrans.server_key' => 'SB-Mid-server-test',
+        'services.midtrans.is_production' => false,
+    ]);
+    $user = makeMidtransPaymentTestUser();
+    $booking = makeMidtransPaymentTestBooking($user);
+    BookingPaymentSchedule::query()->create([
+        'property_id' => $booking->lot->block->property_id,
+        'title' => 'Pembayaran 1',
+        'amount' => 2500000,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('marketing.bookings.payments.midtrans.store', $booking), [
+            'stage' => 'akad_fee',
+            'amount' => 2000000,
+        ])
+        ->assertRedirect('https://app.sandbox.midtrans.com/snap/v2/vtweb/akad-snap-token');
+
+    $this->assertDatabaseHas('booking_payment_orders', [
+        'booking_id' => $booking->id,
+        'stage' => 'akad_fee',
+        'amount' => '2000000.00',
+        'status' => 'pending',
+    ]);
+    $this->assertDatabaseCount('booking_payments', 0);
 });
 
 it('records a verified Midtrans settlement once in booking payments and finance', function () {
@@ -194,7 +245,7 @@ it('rejects Midtrans notifications with an invalid signature without changing pa
         'status' => 'pending',
     ]);
     $notification = makeMidtransSettlementNotification($order->order_id, '2500000.00');
-    $notification['signature_key'] = 'invalid';
+    $notification['signature_key'] = str_repeat('x', 128);
 
     $this->postJson(route('webhooks.midtrans.notifications'), $notification)->assertForbidden();
 
@@ -204,31 +255,60 @@ it('rejects Midtrans notifications with an invalid signature without changing pa
 });
 
 it('syncs a manually recorded booking payment to confirmed finance income', function () {
+    Storage::fake('public');
     $user = makeMidtransPaymentTestUser();
     $booking = makeMidtransPaymentTestBooking($user);
+    $schedule = BookingPaymentSchedule::query()->create([
+        'property_id' => $booking->lot->block->property_id,
+        'title' => 'Pembayaran 1',
+        'amount' => 2500000,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
 
     $this->actingAs($user)
         ->post(route('marketing.bookings.payments.store', $booking), [
-            'stage' => 'dp',
-            'amount' => '2500000',
-            'paid_at' => now()->format('Y-m-d H:i:s'),
+            'stage' => 'booking_schedule_'.$schedule->id,
+            'amount' => '1',
+            'paid_at' => now()->subMinute()->format('Y-m-d H:i:s'),
             'payment_method' => 'transfer',
+            'proof' => UploadedFile::fake()->image('bukti.jpg'),
         ])
         ->assertRedirect(route('marketing.bookings.show', $booking));
 
     $payment = BookingPayment::query()->sole();
+    expect($payment->approval_status)->toBe('pending')
+        ->and((float) $payment->amount)->toBe(2500000.0);
+    $this->assertDatabaseCount('finance_cash_flows', 0);
+
+    $admin = User::factory()->create(['role' => 'admin']);
+    $this->actingAs($admin)
+        ->post(route('admin.payments.approve', $payment))
+        ->assertRedirect();
+
+    $payment->refresh();
     $cashFlow = FinanceCashFlow::query()->sole();
-    expect($cashFlow->booking_payment_id)->toBe($payment->id)
+    expect($payment->approval_status)->toBe('approved')
+        ->and($cashFlow->booking_payment_id)->toBe($payment->id)
         ->and($cashFlow->direction)->toBe('income')
         ->and($cashFlow->status)->toBe('confirmed');
 });
 
 it('does not allow a manual payment while a Midtrans order for the stage is pending', function () {
+    Storage::fake('public');
     $user = makeMidtransPaymentTestUser();
     $booking = makeMidtransPaymentTestBooking($user);
+    $schedule = BookingPaymentSchedule::query()->create([
+        'property_id' => $booking->lot->block->property_id,
+        'title' => 'Pembayaran 1',
+        'amount' => 2500000,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
     BookingPaymentOrder::query()->create([
         'booking_id' => $booking->id,
-        'stage' => 'dp',
+        'booking_payment_schedule_id' => $schedule->id,
+        'stage' => 'booking',
         'amount' => 2500000,
         'order_id' => 'BK'.$booking->id.'-PENDINGMANUAL',
         'status' => 'pending',
@@ -237,10 +317,11 @@ it('does not allow a manual payment while a Midtrans order for the stage is pend
     $this->actingAs($user)
         ->from(route('marketing.bookings.show', $booking))
         ->post(route('marketing.bookings.payments.store', $booking), [
-            'stage' => 'dp',
-            'amount' => '2500000',
+            'stage' => 'booking_schedule_'.$schedule->id,
+            'booking_payment_schedule_id' => $schedule->id,
             'paid_at' => now()->format('Y-m-d H:i:s'),
             'payment_method' => 'transfer',
+            'proof' => UploadedFile::fake()->image('bukti.jpg'),
         ])
         ->assertRedirect(route('marketing.bookings.show', $booking))
         ->assertSessionHasErrors('stage');

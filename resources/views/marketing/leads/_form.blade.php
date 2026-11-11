@@ -20,6 +20,16 @@
         @error('domicile')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
     </div>
     <div>
+        <label for="lead-property" class="mb-2 block text-sm font-medium">Perumahan</label>
+        <select id="lead-property" name="property_id" class="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800">
+            <option value="">Pilih perumahan</option>
+            @foreach($propertyOptions as $propertyOption)
+                <option value="{{ $propertyOption->id }}" @selected(old('property_id', $lead->property_id) == $propertyOption->id)>{{ $propertyOption->name }}</option>
+            @endforeach
+        </select>
+        @error('property_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+    </div>
+    <div>
         <label for="lead-sales" class="mb-2 block text-sm font-medium">Marketing / Sales</label>
         <select id="lead-sales" name="sales_id" class="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800">
             <option value="">Belum ditentukan</option>

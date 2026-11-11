@@ -24,7 +24,12 @@
                 </div>
                 <div class="grid gap-5 p-5 lg:grid-cols-[1fr_auto]">
                     <dl class="grid gap-4 text-sm sm:grid-cols-2">
-                        <div><dt class="text-zinc-500">Tahap</dt><dd class="font-semibold">{{ $payment->stage === 'akad_fee' ? 'Biaya Akad' : 'Pembayaran Rumah' }}</dd></div>
+                        <div><dt class="text-zinc-500">Tahap</dt><dd class="font-semibold">{{ $payment->paymentSchedule?->title ?? match ($payment->stage) {
+                            'dp', 'bank_settlement', 'booking' => 'Pembayaran Booking',
+                            'booking_balance' => 'Sisa Pembayaran Booking',
+                            'akad_fee' => 'Biaya Akad',
+                            default => \Illuminate\Support\Str::headline($payment->stage),
+                        } }}</dd></div>
                         <div><dt class="text-zinc-500">Nominal</dt><dd class="text-lg font-bold text-[#10233D] dark:text-white">Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}</dd></div>
                         <div><dt class="text-zinc-500">Tanggal Bayar</dt><dd class="font-medium">{{ $payment->paid_at->format('d/m/Y H:i') }}</dd></div>
                         <div><dt class="text-zinc-500">Metode</dt><dd class="font-medium">{{ $payment->payment_method ?: '-' }}</dd></div>

@@ -91,8 +91,10 @@ class PaymentController extends Controller
                 'lot.block.property',
                 'customer',
                 'payments.paymentOrder',
+                'payments.paymentSchedule',
                 'payments.recordedBy',
-                'paymentOrders',
+                'paymentOrders.paymentSchedule',
+                'lot.block.property.bookingPaymentSchedules',
             ]), $request->user())
             ->when(
                 isset($filters['property_id']),
@@ -160,7 +162,7 @@ class PaymentController extends Controller
                 ? BookingPayment::query()
                     ->where('payment_channel', 'manual')
                     ->where('approval_status', 'pending')
-                    ->with(['booking.customer', 'booking.lot.block.property', 'recordedBy'])
+                    ->with(['booking.customer', 'booking.lot.block.property', 'paymentSchedule', 'recordedBy'])
                     ->latest('paid_at')
                     ->get()
                 : collect(),

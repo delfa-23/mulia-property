@@ -50,6 +50,12 @@
                     <option value="{{ $source }}" @selected(request('source') === $source)>{{ $source }}</option>
                 @endforeach
             </select>
+            <select name="property_id" class="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800">
+                <option value="">Semua Perumahan</option>
+                @foreach($propertyOptions as $propertyOption)
+                    <option value="{{ $propertyOption->id }}" @selected(request('property_id') == $propertyOption->id)>{{ $propertyOption->name }}</option>
+                @endforeach
+            </select>
             <select name="sales_id" class="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800">
                 <option value="">Semua Sales</option>
                 @foreach($salesOptions as $salesOption)
@@ -85,6 +91,7 @@
                         <tr>
                             <th class="px-5 py-3">Tanggal Masuk</th>
                             <th class="px-5 py-3">Prospek</th>
+                            <th class="px-5 py-3">Perumahan</th>
                             <th class="px-5 py-3">Kategori</th>
                             <th class="px-5 py-3">Sumber</th>
                             <th class="px-5 py-3">Marketing / Sales</th>
@@ -104,6 +111,7 @@
                                     @endif
                                     <p class="mt-1 text-xs text-zinc-500">{{ $lead->phone ?? '-' }}{{ $lead->domicile ? ' · '.$lead->domicile : '' }}</p>
                                 </td>
+                                <td class="px-5 py-4">{{ $lead->property?->name ?? '-' }}</td>
                                 <td class="px-5 py-4">{{ \App\Models\MarketingLead::CATEGORY_LABELS[$lead->category] ?? $lead->category }}</td>
                                 <td class="px-5 py-4">{{ $lead->source }}</td>
                                 <td class="px-5 py-4">{{ $lead->assignedUser?->name ?? 'Belum ditugaskan' }}<span class="mt-1 block text-xs text-zinc-500">Sales: {{ $lead->sales?->name ?? '-' }}</span></td>
@@ -144,7 +152,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="8" class="px-5 py-10 text-center text-zinc-500">Belum ada prospek yang dicatat.</td></tr>
+                            <tr><td colspan="9" class="px-5 py-10 text-center text-zinc-500">Belum ada prospek yang dicatat.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

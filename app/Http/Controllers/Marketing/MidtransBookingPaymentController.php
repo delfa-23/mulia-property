@@ -9,7 +9,6 @@ use App\Services\MarketingLeadAccess;
 use App\Services\MidtransPaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class MidtransBookingPaymentController extends Controller
 {
@@ -21,21 +20,21 @@ class MidtransBookingPaymentController extends Controller
     ): RedirectResponse {
         $leadAccess->authorizeBooking($request->user(), $booking);
 
-        if ($request->filled('amount')) {
+        if ($request->input('stage') === 'akad_fee' && $request->filled('amount')) {
             $request->merge([
                 'amount' => $this->normalizeCurrencyInput((string) $request->input('amount')),
             ]);
         }
         $validated = $request->validate([
-            'stage' => ['required', Rule::in(['dp', 'akad_fee'])],
-            'amount' => ['required', 'integer', 'min:1', 'max:9999999999999'],
+            'stage' => ['required', 'string', 'max:100'],
+            'amount' => ['exclude_unless:stage,akad_fee', 'required', 'integer', 'min:1', 'max:9999999999999'],
         ]);
 
         try {
             $order = $midtrans->createCheckout(
                 $booking,
                 $validated['stage'],
-                (int) $validated['amount'],
+                isset($validated['amount']) ? (int) $validated['amount'] : null,
                 $request->user(),
             );
         } catch (MidtransGatewayException $exception) {

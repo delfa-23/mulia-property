@@ -24,7 +24,7 @@ class ExpireBookings extends Command
             ->where('status', 'booking')
             ->whereNotNull('blocking_until')
             ->where('blocking_until', '<=', now())
-            ->whereDoesntHave('paymentOrders', fn ($query) => $query->where('status', 'paid'))
+            ->whereDoesntHave('paymentOrders', fn ($query) => $query->whereIn('status', ['pending', 'paid']))
             ->orderBy('id')
             ->select('id')
             ->chunkById(100, function ($bookings) use (&$expiredCount, $alertNotifications): void {
@@ -39,7 +39,7 @@ class ExpireBookings extends Command
                             $booking->status !== 'booking' ||
                             ! ($booking->blocking_until?->lessThanOrEqualTo(now()) ?? false) ||
                             $this->hasBlockingPayment($booking) ||
-                            $booking->paymentOrders()->where('status', 'paid')->exists()
+                            $booking->paymentOrders()->whereIn('status', ['pending', 'paid'])->exists()
                         ) {
                             return false;
                         }

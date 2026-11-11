@@ -42,6 +42,7 @@ class MarketingLead extends Model
         'date_received',
         'phone',
         'domicile',
+        'property_id',
         'sales_id',
         'assigned_user_id',
         'created_by',
@@ -71,6 +72,12 @@ class MarketingLead extends Model
     public function sales(): BelongsTo
     {
         return $this->belongsTo(Sales::class);
+    }
+
+    /** @return BelongsTo<Property, $this> */
+    public function property(): BelongsTo
+    {
+        return $this->belongsTo(Property::class);
     }
 
     /** @return HasMany<Booking, $this> */
