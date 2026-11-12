@@ -217,6 +217,9 @@ Route::prefix('pembangunan')
         Route::get('/properties', [PropertyOverviewController::class, 'index'])
             ->name('properties.index');
 
+        Route::get('/progress/export.xlsx', [ProgressController::class, 'export'])
+            ->name('progress.export');
+
         Route::get('/progress', [ProgressController::class, 'index'])
             ->name('progress.index');
 

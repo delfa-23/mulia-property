@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Pembangunan;
 
+use App\Exports\ConstructionProgressByLotExport;
 use App\Http\Controllers\Controller;
 use App\Models\Block;
 use App\Models\ConstructionProgress;
@@ -10,11 +11,14 @@ use App\Models\ConstructionStage;
 use App\Models\Lot;
 use App\Models\Property;
 use App\Services\ActivityLogger;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ProgressController extends Controller
 {
@@ -34,26 +38,11 @@ class ProgressController extends Controller
             ->orderBy('lot_number')
             ->get();
 
-        $lots = Lot::query()
+        $lots = $this->lotsQuery($request)
             ->with([
-                'block.property',
                 'bookings.customer',
                 'budgets' => fn ($query) => $query->where('purpose', 'pembangunan'),
-                'constructionProgresses.stage',
             ])
-            ->when($request->filled('property_id'), function ($query) use ($request) {
-                $query->whereHas(
-                    'block',
-                    fn ($q) => $q->where(
-                        'property_id',
-                        $request->property_id
-                    )
-                );
-            })
-            ->when($request->filled('lot_id'), function ($query) use ($request) {
-                $query->whereKey($request->lot_id);
-            })
-            ->orderBy('lot_number')
             ->paginate(15)
             ->withQueryString();
 
@@ -64,6 +53,16 @@ class ProgressController extends Controller
                 'lotOptions',
                 'lots'
             )
+        );
+    }
+
+    public function export(Request $request): BinaryFileResponse
+    {
+        return Excel::download(
+            new ConstructionProgressByLotExport(
+                $this->lotsQuery($request)->with('bookings.customer')->get()
+            ),
+            'progress-kavling-'.now()->format('Ymd-His').'.xlsx'
         );
     }
 
@@ -209,6 +208,26 @@ class ProgressController extends Controller
                 $lot->block_id === $block->id,
             404
         );
+    }
+
+    private function lotsQuery(Request $request): Builder
+    {
+        return Lot::query()
+            ->with([
+                'block.property',
+                'constructionProgresses.stage',
+            ])
+            ->when($request->filled('property_id'), function ($query) use ($request) {
+                $query->whereHas(
+                    'block',
+                    fn ($q) => $q->where('property_id', $request->property_id)
+                );
+            })
+            ->when($request->filled('lot_id'), function ($query) use ($request) {
+                $query->whereKey($request->lot_id);
+            })
+            ->orderBy('lot_number')
+            ->orderBy('id');
     }
 
     /** @return array<string, mixed> */

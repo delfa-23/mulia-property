@@ -1,13 +1,155 @@
 <?php
 
+use App\Exports\ConstructionProgressByLotExport;
 use App\Models\Block;
+use App\Models\Booking;
 use App\Models\ConstructionProgress;
 use App\Models\ConstructionProgressHistory;
 use App\Models\ConstructionStage;
+use App\Models\Customer;
 use App\Models\Division;
 use App\Models\Lot;
 use App\Models\Property;
 use App\Models\User;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+
+test('construction staff can export filtered lot progress with office categories', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Progress Export']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lots = collect(['001', '002', '003'])->map(fn (string $lotNumber): Lot => Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => $lotNumber,
+        'house_price' => 350000000,
+    ]));
+    $stage = $property->constructionStages()->create([
+        'name' => 'Pembangunan',
+        'order' => 1,
+        'min_progress' => 0,
+        'max_progress' => 100,
+    ]);
+    $customer = Customer::create(['name' => 'Customer Kavling 001']);
+    Booking::create([
+        'lot_id' => $lots[0]->id,
+        'customer_id' => $customer->id,
+        'booking_date' => '2026-10-01',
+        'status' => 'booking',
+    ]);
+    ConstructionProgress::create([
+        'lot_id' => $lots[0]->id,
+        'stage_id' => $stage->id,
+        'progress' => 25,
+        'updated_by' => $user->id,
+        'notes' => 'Progress 25 persen.',
+    ]);
+    ConstructionProgress::create([
+        'lot_id' => $lots[1]->id,
+        'stage_id' => $stage->id,
+        'progress' => 80,
+        'updated_by' => $user->id,
+        'notes' => 'Progress 80 persen.',
+    ]);
+    $otherProperty = Property::create(['name' => 'Perumahan Lain']);
+    $otherBlock = Block::create(['property_id' => $otherProperty->id, 'name' => 'B']);
+    Lot::create([
+        'block_id' => $otherBlock->id,
+        'lot_number' => '999',
+        'house_price' => 350000000,
+    ]);
+
+    $response = $this->actingAs($user)
+        ->get(route('pembangunan.progress.export', ['property_id' => $property->id]));
+
+    $response->assertDownload();
+
+    $filePath = $response->baseResponse->getFile()->getPathname();
+    $spreadsheet = IOFactory::load($filePath);
+
+    try {
+        $sheet = $spreadsheet->getActiveSheet();
+
+        expect($sheet->getTitle())->toBe('Progress Kavling')
+            ->and($sheet->getHighestDataRow())->toBe(4)
+            ->and($sheet->getAutoFilter()->getRange())->toBe('A1:H4')
+            ->and($sheet->getCell('A1')->getValue())->toBe('Perumahan')
+            ->and($sheet->getCell('C1')->getValue())->toBe('No. Kavling')
+            ->and($sheet->getCell('D1')->getValue())->toBe('Konsumen')
+            ->and($sheet->getCell('A2')->getValue())->toBe($property->name)
+            ->and($sheet->getCell('C2')->getValue())->toBe('001')
+            ->and($sheet->getCell('D2')->getValue())->toBe($customer->name)
+            ->and($sheet->getCell('E2')->getValue())->toBe(25.0)
+            ->and($sheet->getCell('F2')->getValue())->toBe('Progres 25-54%')
+            ->and($sheet->getCell('H2')->getValue())->toBe('Progress 25 persen.')
+            ->and($sheet->getCell('C3')->getValue())->toBe('002')
+            ->and($sheet->getCell('D3')->getValue())->toBe('-')
+            ->and($sheet->getCell('F3')->getValue())->toBe('Progres 80-100%')
+            ->and($sheet->getCell('C4')->getValue())->toBe('003')
+            ->and($sheet->getCell('F4')->getValue())->toBe('Belum dibangun')
+            ->and($sheet->getCell('E2')->getStyle()->getFill()->getStartColor()->getRGB())->toBe('FFD966')
+            ->and($sheet->getCell('F3')->getStyle()->getFill()->getStartColor()->getRGB())->toBe('70AD47')
+            ->and($sheet->getCell('A5')->getValue())->toBeNull();
+    } finally {
+        $spreadsheet->disconnectWorksheets();
+
+        if (is_file($filePath)) {
+            unlink($filePath);
+        }
+    }
+});
+
+test('lot progress export colors percentage bands like the office workbook', function () {
+    $sheet = (new Spreadsheet)->getActiveSheet();
+    $progressValues = [0, 24, 25, 54, 55, 79, 80, 100];
+
+    foreach ($progressValues as $index => $progress) {
+        $sheet->setCellValue('E'.($index + 2), $progress);
+    }
+
+    $export = new ConstructionProgressByLotExport(collect());
+    $export->styles($sheet);
+
+    $colors = collect(range(2, 9))
+        ->map(fn (int $row): array => [
+            $sheet->getStyle("E{$row}")->getFill()->getStartColor()->getRGB(),
+            $sheet->getStyle("F{$row}")->getFill()->getStartColor()->getRGB(),
+        ])
+        ->all();
+
+    expect($colors)->toBe([
+        ['F8696B', 'F8696B'],
+        ['F8696B', 'F8696B'],
+        ['FFD966', 'FFD966'],
+        ['FFD966', 'FFD966'],
+        ['5B9BD5', '5B9BD5'],
+        ['5B9BD5', '5B9BD5'],
+        ['70AD47', '70AD47'],
+        ['70AD47', '70AD47'],
+    ]);
+});
+
+test('users from other divisions cannot export construction lot progress', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $user = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('pembangunan.progress.export'))
+        ->assertForbidden();
+});
 
 test('construction staff can update progress without changing admin fields', function () {
     $division = Division::firstOrCreate(
