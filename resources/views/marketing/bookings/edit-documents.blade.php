@@ -11,7 +11,7 @@
                         {{ $booking->customer->name }} · {{ $booking->lot->block->property->name }} / {{ $booking->lot->block->name }}-{{ $booking->lot->lot_number }}
                     </p>
                 </div>
-                <a href="{{ route('marketing.bookings.edit', $booking) }}" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800" wire:navigate>Edit Booking</a>
+                <a href="{{ route('marketing.bookings.edit', $booking) }}" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-700" wire:navigate>Edit Booking</a>
             </div>
         </div>
 

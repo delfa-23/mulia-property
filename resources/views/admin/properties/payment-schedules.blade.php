@@ -42,7 +42,7 @@
                                 <input type="hidden" name="title" value="{{ $schedule->title }}">
                                 <input type="hidden" name="amount" value="{{ (int) $schedule->amount }}">
                                 <input type="hidden" name="is_active" value="{{ $schedule->is_active ? 0 : 1 }}">
-                                <button type="submit" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                                <button type="submit" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700">
                                     {{ $schedule->is_active ? 'Nonaktifkan' : 'Aktifkan' }}
                                 </button>
                             </form>

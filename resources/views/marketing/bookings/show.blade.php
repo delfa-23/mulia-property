@@ -16,7 +16,7 @@
             <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <h1 class="text-2xl font-semibold">Detail Booking</h1>
                 <div class="flex flex-wrap gap-2">
-                    <a href="{{ route('marketing.bookings.edit', $booking) }}" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800" wire:navigate>Edit Booking</a>
+                    <a href="{{ route('marketing.bookings.edit', $booking) }}" class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-700" wire:navigate>Edit Booking</a>
                     <a href="{{ route('marketing.bookings.documents.edit', $booking) }}" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800" wire:navigate>Edit Berkas</a>
                     @if(auth()->user()->isAdmin())
                         <form method="POST" action="{{ route('marketing.bookings.destroy', $booking) }}" onsubmit="return confirm('Hapus permanen booking ini beserta seluruh data terkait?')">

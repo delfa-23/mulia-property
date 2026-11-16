@@ -59,11 +59,19 @@ class ProgressController extends Controller
     public function export(Request $request): BinaryFileResponse
     {
         return Excel::download(
-            new ConstructionProgressByLotExport(
-                $this->lotsQuery($request)->with('bookings.customer')->get()
-            ),
+            $this->progressExport($request),
             'progress-kavling-'.now()->format('Ymd-His').'.xlsx'
         );
+    }
+
+    public function preview(Request $request): View
+    {
+        $export = $this->progressExport($request);
+
+        return view('pembangunan.progress.preview', [
+            'headings' => $export->headings(),
+            'rows' => $export->collection(),
+        ]);
     }
 
     public function show(
@@ -228,6 +236,13 @@ class ProgressController extends Controller
             })
             ->orderBy('lot_number')
             ->orderBy('id');
+    }
+
+    private function progressExport(Request $request): ConstructionProgressByLotExport
+    {
+        return new ConstructionProgressByLotExport(
+            $this->lotsQuery($request)->with('bookings.customer')->get()
+        );
     }
 
     /** @return array<string, mixed> */

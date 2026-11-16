@@ -105,6 +105,45 @@ test('construction staff can export filtered lot progress with office categories
     }
 });
 
+test('construction staff can preview all filtered progress rows before exporting', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create(['name' => 'Perumahan Preview Progress']);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+
+    foreach (range(1, 16) as $number) {
+        Lot::create([
+            'block_id' => $block->id,
+            'lot_number' => str_pad((string) $number, 3, '0', STR_PAD_LEFT),
+            'house_price' => 350000000,
+        ]);
+    }
+
+    $otherProperty = Property::create(['name' => 'Perumahan Tidak Terpilih']);
+    $otherBlock = Block::create(['property_id' => $otherProperty->id, 'name' => 'B']);
+    Lot::create([
+        'block_id' => $otherBlock->id,
+        'lot_number' => '999',
+        'house_price' => 350000000,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('pembangunan.progress.preview', ['property_id' => $property->id]))
+        ->assertSee('Preview Excel Progress Kavling')
+        ->assertSee('16 data kavling akan diekspor')
+        ->assertSee('Perumahan Preview Progress')
+        ->assertSee('016')
+        ->assertSee('Belum dibangun')
+        ->assertDontSee('Perumahan Tidak Terpilih')
+        ->assertSee(route('pembangunan.progress.export', ['property_id' => $property->id]), false);
+});
+
 test('lot progress export colors percentage bands like the office workbook', function () {
     $sheet = (new Spreadsheet)->getActiveSheet();
     $progressValues = [0, 24, 25, 54, 55, 79, 80, 100];

@@ -72,7 +72,7 @@
 
                 <button
                     type="submit"
-                    class="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-800"
+                    class="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 hover:text-white"
                 >
                     Cari
                 </button>

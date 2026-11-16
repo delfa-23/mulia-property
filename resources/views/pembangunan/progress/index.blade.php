@@ -13,12 +13,20 @@
             <p class="mt-2 text-sm text-gray-600 dark:text-zinc-300">
                 Pilih kavling untuk menambah, mengubah, atau menghapus laporan progress tahap pembangunan.
             </p>
-            <a
-                href="{{ route('pembangunan.progress.export', request()->query()) }}"
-                class="mt-4 inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
-            >
-                Ekspor ke Excel
-            </a>
+            <div class="mt-4 flex flex-wrap gap-2">
+                <a
+                    href="{{ route('pembangunan.progress.preview', request()->query()) }}"
+                    class="inline-flex items-center rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900 dark:text-emerald-300 dark:hover:bg-zinc-700 dark:hover:text-emerald-200"
+                >
+                    Lihat Preview Excel
+                </a>
+                <a
+                    href="{{ route('pembangunan.progress.export', request()->query()) }}"
+                    class="inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 hover:text-white"
+                >
+                    Ekspor ke Excel
+                </a>
+            </div>
         </div>
 
 

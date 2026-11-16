@@ -261,7 +261,7 @@
                                                 <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{{ $booking->lot->block->property->name }} · total jadwal tidak boleh melebihi harga kavling terendah.</p>
                                             </div>
                                             <form method="dialog">
-                                                <button type="submit" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800">Tutup</button>
+                                                <button type="submit" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700">Tutup</button>
                                             </form>
                                         </header>
 
@@ -354,7 +354,7 @@
                                                             <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Nominal ditetapkan admin. Sisa tagihan tahap ini Rp {{ number_format($stage['remaining'], 0, ',', '.') }}.</p>
                                                         </div>
                                                         <form method="dialog">
-                                                            <button type="submit" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800">Tutup</button>
+                                                            <button type="submit" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700">Tutup</button>
                                                         </form>
                                                     </header>
 

@@ -82,7 +82,7 @@
 						<h2 id="workflow-bookings-modal-title" class="mt-1 text-lg font-semibold">Booking: {{ $workflowChart->firstWhere('key', $selectedWorkflow)['label'] }}</h2>
 						<p class="mt-1 text-sm text-zinc-500">{{ $workflowBookings->total() }} booking ditemukan</p>
 					</div>
-					<button type="button" data-workflow-bookings-modal-close class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800">Tutup</button>
+					<button type="button" data-workflow-bookings-modal-close class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-700">Tutup</button>
 				</div>
 				<form method="GET" action="{{ route('pemberkasan.dashboard') }}" class="grid gap-3 border-b border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-700 dark:bg-zinc-800 sm:grid-cols-2">
 					<input type="hidden" name="workflow" value="{{ $selectedWorkflow }}">

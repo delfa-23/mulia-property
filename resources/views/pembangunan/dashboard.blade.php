@@ -10,7 +10,7 @@
                 <a href="{{ auth()->user()->role === 'admin' ? route('admin.property-construction-stages.index') : route('pembangunan.progress.index') }}" wire:navigate class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200" style="background-color: #ffffff; color: #0f172a;">
                     {{ auth()->user()->role === 'admin' ? 'Tahapan Pembangunan' : 'Progress Kavling' }}
                 </a>
-                <a href="{{ auth()->user()->role === 'admin' ? route('admin.common-facilities.index') : route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800" style="border-color: #64748b; color: #ffffff;">
+                <a href="{{ auth()->user()->role === 'admin' ? route('admin.common-facilities.index') : route('pembangunan.progress.facilities.index') }}" wire:navigate class="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 hover:text-white" style="border-color: #64748b; color: #ffffff;">
                     Fasilitas Umum
                 </a>
             </nav>
@@ -38,7 +38,7 @@
             <div class="flex items-end gap-2">
                 <button type="submit" class="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700">Terapkan</button>
                 @if($propertyId || $lotId)
-                    <a href="{{ route('pembangunan.dashboard') }}" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Reset</a>
+                    <a href="{{ route('pembangunan.dashboard') }}" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-700">Reset</a>
                 @endif
             </div>
         </form>

@@ -72,7 +72,7 @@
                 @forelse($properties as $property)
                     <a
                         href="{{ route('admin.common-facilities.index', ['property_id' => $property->id]) }}"
-                        class="rounded-xl border p-5 transition hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-zinc-800 {{ $propertyId === $property->id ? 'border-blue-500 bg-blue-50 dark:bg-zinc-800' : 'border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900' }}"
+                        class="rounded-xl border p-5 transition hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-zinc-700 {{ $propertyId === $property->id ? 'border-blue-500 bg-blue-50 dark:bg-zinc-800' : 'border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900' }}"
                         wire:navigate
                     >
                         <span class="block font-semibold text-zinc-900 dark:text-white">{{ $property->name }}</span>
