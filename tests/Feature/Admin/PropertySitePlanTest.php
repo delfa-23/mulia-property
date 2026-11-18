@@ -796,6 +796,7 @@ it('shows siteplan export options only on the admin dashboard', function () {
     $this->actingAs($admin)
         ->get(route('admin.dashboard', ['property_id' => $property->id]))
         ->assertSee('Export Siteplan')
+        ->assertSee('style="background-color: #174a35; color: #ffffff;"', false)
         ->assertSee(route('admin.properties.site-plan-export', $property), false);
 
     $this->actingAs($marketingUser)

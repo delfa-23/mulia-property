@@ -8,15 +8,6 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-.site-plan-export-button {
-    background-color: #174a35;
-    color: #ffffff;
-}
-
-.site-plan-export-button:hover {
-    background-color: #103b2a;
-}
-
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
     --radius-lg: 6px;
