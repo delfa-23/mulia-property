@@ -42,6 +42,14 @@
             </div>
         </form>
 
+        @if($selectedProperty && $selectedProperty->site_plan_path)
+            <div class="flex flex-wrap justify-end gap-2">
+                <a href="{{ route('admin.properties.site-plan-export', $selectedProperty) }}" class="rounded-lg bg-[#174A35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#103b2a]">
+                    Export Siteplan
+                </a>
+            </div>
+        @endif
+
         <x-site-plan-map
             :property="$selectedProperty"
             :lots="$sitePlanLots"

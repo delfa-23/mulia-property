@@ -1,6 +1,9 @@
 <?php
 
+use App\Exports\SitePlanWorkbookExport;
 use App\Models\Block;
+use App\Models\ConstructionProgress;
+use App\Models\ConstructionStage;
 use App\Models\Division;
 use App\Models\Lot;
 use App\Models\Property;
@@ -8,6 +11,8 @@ use App\Models\SitePlanArea;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
 it('uploads a site plan when creating a property', function () {
     Storage::fake('site-plans');
@@ -449,6 +454,7 @@ it('shows the selected property site plan on admin and marketing dashboards', fu
     $this->actingAs($admin)
         ->get(route('admin.dashboard', ['property_id' => $property->id]))
         ->assertSee('Denah Perumahan')
+        ->assertSee(route('admin.properties.site-plan-export', $property), false)
         ->assertSee('A/01')
         ->assertSee('A/02')
         ->assertDontSee('B/03')
@@ -461,6 +467,7 @@ it('shows the selected property site plan on admin and marketing dashboards', fu
         ->assertSee('A/01')
         ->assertSee('A/02')
         ->assertDontSee('B/03')
+        ->assertDontSee(route('admin.properties.site-plan-export', $property), false)
         ->assertSee(route('site-plans.index'))
         ->assertViewHas('sitePlanLots', fn ($lots): bool => $lots->count() === 2);
 });
@@ -695,4 +702,190 @@ it('denies site plan management to users outside marketing', function () {
     $this->actingAs($financeUser)
         ->get(route('marketing.site-plans.edit', $property))
         ->assertForbidden();
+});
+
+it('exports mapped construction progress in siteplan positions with progress band colors', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $property = Property::create([
+        'name' => 'Mulia Residence',
+        'site_plan_path' => 'site-plans/mulia.png',
+    ]);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+    $lot = Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '001',
+        'house_price' => 500000000,
+        'status' => 'available',
+    ]);
+    $stage = ConstructionStage::create([
+        'property_id' => $property->id,
+        'name' => 'Struktur',
+        'order' => 1,
+        'min_progress' => 0,
+        'max_progress' => 100,
+    ]);
+    ConstructionProgress::create([
+        'lot_id' => $lot->id,
+        'stage_id' => $stage->id,
+        'progress' => 60,
+        'updated_by' => $admin->id,
+    ]);
+    SitePlanArea::create([
+        'property_id' => $property->id,
+        'site_plan_path' => $property->site_plan_path,
+        'lot_id' => $lot->id,
+        'polygon' => [
+            ['x' => 10, 'y' => 20],
+            ['x' => 12, 'y' => 20],
+            ['x' => 12, 'y' => 22],
+            ['x' => 10, 'y' => 22],
+        ],
+    ]);
+    Lot::create([
+        'block_id' => $block->id,
+        'lot_number' => '002',
+        'house_price' => 500000000,
+        'status' => 'available',
+        'map_coordinates' => ['x' => 30, 'y' => 40, 'width' => 4, 'height' => 4],
+    ]);
+    Excel::fake();
+
+    $this->actingAs($admin)
+        ->get(route('admin.properties.site-plan-export', $property))
+        ->assertOk();
+
+    Excel::matchByRegex();
+    Excel::assertDownloaded('/^export-siteplan-mulia-residence-\d{8}-\d{6}\.xlsx$/', function ($export): bool {
+        if (! $export instanceof SitePlanWorkbookExport) {
+            return false;
+        }
+
+        $sheets = $export->sheets();
+        $marketingSheet = $sheets[0];
+        $constructionSheet = $sheets[1];
+        $rows = $constructionSheet->array();
+        $sheet = (new Spreadsheet)->getActiveSheet();
+        $constructionSheet->styles($sheet);
+
+        expect($marketingSheet->title())->toBe('Marketing');
+        expect($constructionSheet->title())->toBe('Pembangunan');
+        expect($rows[12][6])->toBe('A/001'.PHP_EOL.'60%');
+        expect($sheet->getStyle('G13')->getFill()->getStartColor()->getRGB())->toBe('5B9BD5');
+        expect($rows[18][17])->toBe('A/002'.PHP_EOL.'0%');
+
+        return true;
+    });
+});
+
+it('shows siteplan export options only on the admin dashboard', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $marketingUser = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $division->id,
+    ]);
+    $property = Property::create([
+        'name' => 'Perumahan Terpilih',
+        'site_plan_path' => 'site-plans/selected.png',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.dashboard', ['property_id' => $property->id]))
+        ->assertSee('Export Siteplan')
+        ->assertSee(route('admin.properties.site-plan-export', $property), false);
+
+    $this->actingAs($marketingUser)
+        ->get(route('marketing.dashboard', ['property_id' => $property->id]))
+        ->assertDontSee('Export Siteplan')
+        ->assertDontSee('/admin/properties/'.$property->id.'/site-plan-export', false);
+});
+
+it('exports marketing lot names with available booking and sold colors', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $property = Property::create([
+        'name' => 'Mulia Residence',
+        'site_plan_path' => 'site-plans/mulia.png',
+    ]);
+    $block = Block::create(['property_id' => $property->id, 'name' => 'A']);
+
+    foreach ([
+        ['01', 'available', 10],
+        ['02', 'booked', 30],
+        ['03', 'finish', 50],
+    ] as [$lotNumber, $status, $x]) {
+        $lot = Lot::create([
+            'block_id' => $block->id,
+            'lot_number' => $lotNumber,
+            'house_price' => 500000000,
+            'status' => $status,
+        ]);
+        SitePlanArea::create([
+            'property_id' => $property->id,
+            'site_plan_path' => $property->site_plan_path,
+            'lot_id' => $lot->id,
+            'polygon' => [
+                ['x' => $x, 'y' => 20],
+                ['x' => $x + 2, 'y' => 20],
+                ['x' => $x + 2, 'y' => 22],
+                ['x' => $x, 'y' => 22],
+            ],
+        ]);
+    }
+
+    Excel::fake();
+
+    $this->actingAs($admin)
+        ->get(route('admin.properties.site-plan-export', $property))
+        ->assertOk();
+
+    Excel::matchByRegex();
+    Excel::assertDownloaded('/^export-siteplan-mulia-residence-\d{8}-\d{6}\.xlsx$/', function ($export): bool {
+        if (! $export instanceof SitePlanWorkbookExport) {
+            return false;
+        }
+
+        $sheets = $export->sheets();
+        $marketingSheet = $sheets[0];
+        $constructionSheet = $sheets[1];
+        $rows = $marketingSheet->array();
+        $sheet = (new Spreadsheet)->getActiveSheet();
+        $marketingSheet->styles($sheet);
+
+        return $marketingSheet->title() === 'Marketing'
+            && $constructionSheet->title() === 'Pembangunan'
+            && $rows[12][6] === 'A/01'
+            && $rows[12][16] === 'A/02'
+            && $rows[12][26] === 'A/03'
+            && $sheet->getStyle('G13')->getFill()->getStartColor()->getRGB() === 'FFFFFF'
+            && $sheet->getStyle('Q13')->getFill()->getStartColor()->getRGB() === '22C55E'
+            && $sheet->getStyle('AA13')->getFill()->getStartColor()->getRGB() === 'EF4444';
+    });
+});
+
+it('does not allow non-admin users to export a siteplan', function () {
+    $marketingUser = User::factory()->create(['role' => 'staff_marketing']);
+    $property = Property::create([
+        'name' => 'Perumahan Marketing',
+        'site_plan_path' => 'site-plans/marketing.png',
+    ]);
+
+    $this->actingAs($marketingUser)
+        ->get(route('admin.properties.site-plan-export', $property))
+        ->assertForbidden();
+});
+
+it('generates a downloadable Excel workbook for an admin siteplan export', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $property = Property::create([
+        'name' => 'Perumahan Unduhan',
+        'site_plan_path' => 'site-plans/download.png',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.properties.site-plan-export', $property))
+        ->assertDownload();
 });

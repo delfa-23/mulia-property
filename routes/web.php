@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\LotController;
 use App\Http\Controllers\Admin\PemberkasanDocumentController as AdminPemberkasanDocumentController;
 use App\Http\Controllers\Admin\PropertyController;
 use App\Http\Controllers\Admin\SitePlanAreaController;
+use App\Http\Controllers\Admin\SitePlanExportController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AlertNotificationController;
 use App\Http\Controllers\Finance\FinanceCashPositionController;
@@ -140,6 +141,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->name('admin.')
     ->group(function () {
         Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
+        Route::get('/properties/{property}/site-plan-export', [SitePlanExportController::class, 'download'])
+            ->name('properties.site-plan-export');
         Route::get('/payment-approvals', [MarketingBookingController::class, 'paymentApprovals'])
             ->name('payments.approvals');
         Route::get('/payment-settings', [BookingPaymentSettingController::class, 'index'])
