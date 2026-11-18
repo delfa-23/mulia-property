@@ -7,6 +7,7 @@ use App\Models\Block;
 use App\Models\Booking;
 use App\Models\BookingHistory;
 use App\Models\BookingPayment;
+use App\Models\BookingPaymentSetting;
 use App\Models\Customer;
 use App\Models\Lot;
 use App\Models\MarketingLead;
@@ -65,6 +66,7 @@ class BookingController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name']),
             'salesUsers' => $this->salesOptions(),
+            'paymentSettings' => BookingPaymentSetting::query()->get()->keyBy('payment_category'),
         ]);
     }
 
@@ -99,9 +101,15 @@ class BookingController extends Controller
             $this->resolveCustomer($validated);
             $lot = Lot::query()->lockForUpdate()->findOrFail($validated['lot_id']);
             $this->ensureLotAvailable($lot);
+            $paymentSetting = BookingPaymentSetting::query()
+                ->where('payment_category', $validated['payment_category'])
+                ->firstOrFail();
+            $now = now();
 
             $booking = Booking::create([
                 ...$validated,
+                'blocking_until' => $now->copy()->addHours($paymentSetting->booking_fee_deadline_hours),
+                'dp_deadline_at' => $now->copy()->addDays($paymentSetting->dp_deadline_days),
                 'created_by' => $request->user()->id,
                 'house_price_snapshot' => $lot->house_price,
                 'dp_percentage' => Booking::DP_PERCENTAGE,
@@ -254,7 +262,11 @@ class BookingController extends Controller
         BookingPaymentSummaryService $paymentSummaryService,
     ): RedirectResponse {
         $leadAccess->authorizeBooking($request->user(), $booking);
+        $paymentCategoryWasSubmitted = $request->exists('payment_category');
         $validated = $this->validated($request, $booking);
+        if (! $paymentCategoryWasSubmitted && $booking->payment_category === null) {
+            $validated['payment_category'] = null;
+        }
         if (
             ! empty($validated['lead_id']) &&
             (int) $validated['lead_id'] !== (int) $booking->lead_id
@@ -269,7 +281,7 @@ class BookingController extends Controller
         unset($validated['property_id']);
         $this->ensureStatusOrder($booking, $validated['status'], $paymentSummaryService);
 
-        DB::transaction(function () use ($request, $booking, $validated, $activityLogger): void {
+        DB::transaction(function () use ($request, $booking, $validated, $activityLogger, $paymentCategoryWasSubmitted): void {
             $this->resolveCustomer($validated);
             $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $lotIds = collect([$lockedBooking->lot_id, $validated['lot_id']])->unique()->sort()->values();
@@ -279,19 +291,25 @@ class BookingController extends Controller
             $hasPayments = $lockedBooking->payments()->exists();
             $hasPendingPaymentOrders = $lockedBooking->paymentOrders()->where('status', 'pending')->exists();
             $hasPaymentActivity = $hasPayments || $hasPendingPaymentOrders;
+            $paymentCategoryChanged = $lockedBooking->payment_category !== ($validated['payment_category'] ?? null);
             $akadFeeChanged = abs((float) $lockedBooking->akad_fee - (float) $validated['akad_fee']) > 0.009;
+
+            if ($hasPaymentActivity && $paymentCategoryChanged) {
+                throw ValidationException::withMessages([
+                    'payment_category' => 'Cara pembayaran tidak dapat diubah setelah pembayaran diajukan atau dicatat.',
+                ]);
+            }
 
             if (
                 $hasPaymentActivity &&
                 ! $request->user()->isAdmin() &&
                 ((int) $lockedBooking->customer_id !== (int) $validated['customer_id'] ||
-                    $lockedBooking->lot_id !== $targetLot->id ||
-                    (float) $lockedBooking->akad_fee !== (float) $validated['akad_fee'])
+                    $lockedBooking->lot_id !== $targetLot->id)
             ) {
                 throw ValidationException::withMessages([
                     'customer_id' => $request->user()->isAdmin()
                         ? 'Data customer dan kavling tidak dapat diubah setelah pembayaran dicatat.'
-                        : 'Data customer, kavling, harga, dan biaya akad tidak dapat diubah setelah pembayaran dicatat.',
+                        : 'Data customer dan kavling tidak dapat diubah setelah pembayaran dicatat.',
                 ]);
             }
 
@@ -304,6 +322,11 @@ class BookingController extends Controller
                 ? $lockedBooking->house_price_snapshot
                 : $targetLot->house_price;
             $validated['dp_percentage'] = Booking::DP_PERCENTAGE;
+            $paymentSetting = isset($validated['payment_category'])
+                ? BookingPaymentSetting::query()
+                    ->where('payment_category', $validated['payment_category'])
+                    ->firstOrFail()
+                : null;
             $existingAkadPaid = (float) $lockedBooking->payments()
                 ->where('approval_status', 'approved')
                 ->where('stage', 'akad_fee')
@@ -329,7 +352,19 @@ class BookingController extends Controller
                 'sales_id' => $validated['sales_id'] ?? null,
                 'lead_id' => $validated['lead_id'] ?? null,
                 'booking_date' => $validated['booking_date'],
-                'blocking_until' => $validated['blocking_until'] ?? null,
+                'payment_category' => $validated['payment_category'] ?? null,
+                'blocking_until' => $paymentCategoryChanged
+                    ? ($paymentSetting?->booking_fee_deadline_hours
+                        ? now()->addHours($paymentSetting->booking_fee_deadline_hours)
+                        : null)
+                    : ($lockedBooking->payment_category === null && ! $paymentCategoryWasSubmitted
+                        ? ($validated['blocking_until'] ?? $lockedBooking->blocking_until)
+                        : $lockedBooking->blocking_until),
+                'dp_deadline_at' => $paymentCategoryChanged
+                    ? ($paymentSetting?->dp_deadline_days
+                        ? now()->addDays($paymentSetting->dp_deadline_days)
+                        : null)
+                    : $lockedBooking->dp_deadline_at,
                 'house_price_snapshot' => $validated['house_price_snapshot'],
                 'dp_percentage' => $validated['dp_percentage'],
                 'akad_fee' => $validated['akad_fee'],
@@ -380,6 +415,7 @@ class BookingController extends Controller
         MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
         $leadAccess->authorizeBooking($request->user(), $booking);
+        abort_unless($request->user()->isAdmin() || $request->input('stage') !== 'akad_fee', 403);
 
         if ($request->input('stage') === 'akad_fee' && $request->filled('amount')) {
             $request->merge([
@@ -406,6 +442,18 @@ class BookingController extends Controller
             }
 
             $summary = $paymentSummaryService->summarize($lockedBooking);
+            $bookingFeeStage = collect($summary['stages'])->firstWhere('stage', 'booking_fee');
+
+            if (
+                $lockedBooking->status === 'booking' &&
+                $lockedBooking->blocking_until?->isPast() &&
+                ($lockedBooking->payment_category === null || ($bookingFeeStage !== null && $bookingFeeStage['remaining'] > 0.009))
+            ) {
+                throw ValidationException::withMessages([
+                    'stage' => 'Deadline Booking Fee sudah terlewati. Booking tidak dapat menerima pembayaran baru.',
+                ]);
+            }
+
             $paymentStage = collect($summary['stages'])
                 ->first(fn (array $stage): bool => $stage['key'] === $validated['stage']);
 
@@ -586,6 +634,14 @@ class BookingController extends Controller
     /** @return array<string, mixed> */
     private function validated(Request $request, ?Booking $booking = null): array
     {
+        if (! $request->filled('payment_category') && $booking?->payment_category) {
+            $request->merge(['payment_category' => $booking->payment_category]);
+        }
+
+        if (! $request->filled('payment_category')) {
+            $request->merge(['payment_category' => 'cash']);
+        }
+
         if ($request->filled('akad_fee')) {
             $request->merge([
                 'akad_fee' => $this->normalizeCurrencyInput((string) $request->input('akad_fee')),
@@ -614,16 +670,17 @@ class BookingController extends Controller
             'applicant_work_location_url' => ['nullable', 'url', 'max:2048'],
             'spouse_work_location_url' => ['nullable', 'url', 'max:2048'],
             'booking_date' => ['required', 'date'],
+            'payment_category' => ['required', Rule::in(BookingPaymentSetting::CATEGORIES)],
             'blocking_until' => [
-                Rule::requiredIf($request->input('status') === 'booking'),
                 'nullable',
                 'date',
                 'after_or_equal:booking_date',
-                Rule::when($request->input('status') === 'booking', ['after:now']),
             ],
             'dp_paid_amount' => ['prohibited'],
             'akad_paid_amount' => ['prohibited'],
-            'akad_fee' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
+            'akad_fee' => $request->user()->isAdmin()
+                ? ['required', 'numeric', 'decimal:0,2', 'min:0']
+                : ['prohibited'],
             'status' => ['required', Rule::in(['booking', 'process', 'akad', 'finish', 'cancelled'])],
             'notes' => ['nullable', 'string'],
         ]);
@@ -632,6 +689,10 @@ class BookingController extends Controller
             throw ValidationException::withMessages([
                 'customer_id' => 'Pilih customer yang sudah terdaftar.',
             ]);
+        }
+
+        if (! $request->user()->isAdmin()) {
+            $validated['akad_fee'] = (float) ($booking?->akad_fee ?? 0);
         }
 
         return $validated;
@@ -701,6 +762,7 @@ class BookingController extends Controller
 
         return [
             'properties' => Property::query()->orderBy('name')->get(),
+            'paymentSettings' => BookingPaymentSetting::query()->get()->keyBy('payment_category'),
             'customers' => Customer::query()
                 ->when(
                     ! $leadAccess->canManageTeam($request->user()),
@@ -804,7 +866,7 @@ class BookingController extends Controller
 
         if ($status === 'akad') {
             $requiredPayments = collect($paymentSummaryService->summarize($booking)['stages'])
-                ->whereIn('stage', ['dp', 'booking', 'booking_balance', 'akad_fee']);
+                ->whereIn('stage', ['booking_fee', 'dp', 'booking', 'akad_fee']);
 
             if ($requiredPayments->contains(fn (array $stage): bool => $stage['remaining'] > 0.009)) {
                 throw ValidationException::withMessages([

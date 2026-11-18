@@ -9,11 +9,10 @@ use Illuminate\Support\Carbon;
 
 function financeCashFlowUser(string $role = 'staff_finance', string $divisionSlug = 'finance'): User
 {
-    $division = Division::create([
-        'name' => ucfirst($divisionSlug),
-        'slug' => $divisionSlug,
-        'is_active' => true,
-    ]);
+    $division = Division::query()->firstOrCreate(
+        ['slug' => $divisionSlug],
+        ['name' => ucfirst($divisionSlug), 'is_active' => true],
+    );
 
     return User::factory()->create([
         'role' => $role,
@@ -21,7 +20,7 @@ function financeCashFlowUser(string $role = 'staff_finance', string $divisionSlu
     ]);
 }
 
-it('shows finance cash balances and forecasts for each of the next four weeks', function () {
+it('shows monthly finance forecasts grouped by each of the four due-date periods', function () {
     $this->travelTo(Carbon::parse('2026-10-12 09:00:00'));
     $user = financeCashFlowUser();
     $property = Property::create(['name' => 'Perumahan Proyeksi']);
@@ -47,7 +46,7 @@ it('shows finance cash balances and forecasts for each of the next four weeks', 
         'title' => 'Target penjualan',
         'direction' => 'income',
         'status' => 'forecast',
-        'due_date' => '2026-11-08',
+        'due_date' => '2026-10-24',
         'amount' => 3000000,
     ]);
     FinanceCashFlow::query()->create([
@@ -61,7 +60,7 @@ it('shows finance cash balances and forecasts for each of the next four weeks', 
         'title' => 'Biaya promosi',
         'direction' => 'outcome',
         'status' => 'forecast',
-        'due_date' => '2026-11-09',
+        'due_date' => '2026-10-29',
         'amount' => 9000000,
     ]);
 
@@ -74,12 +73,13 @@ it('shows finance cash balances and forecasts for each of the next four weeks', 
         ->assertSee('Rp 2.500.000')
         ->assertSee('Minggu ke-1')
         ->assertSee('Minggu ke-4')
+        ->assertSee('22/10 – 31/10/2026')
         ->assertViewHas('cashFlowForecasts', function ($forecasts): bool {
-            return $forecasts[1]['income_confirmed'] === 10000000.0
-                && $forecasts[1]['outcome_confirmed'] === 2000000.0
-                && $forecasts[2]['income_potential'] === 5000000.0
+            return $forecasts[3]['income_confirmed'] === 10000000.0
+                && $forecasts[3]['outcome_confirmed'] === 2000000.0
+                && $forecasts[3]['income_potential'] === 5000000.0
                 && $forecasts[4]['income_forecast'] === 3000000.0
-                && $forecasts[4]['outcome_forecast'] === 0.0;
+                && $forecasts[4]['outcome_forecast'] === 9000000.0;
         });
 });
 
@@ -202,14 +202,14 @@ it('creates and displays an escaped finance cash flow plan', function () {
 
     $this->actingAs($user)
         ->post(route('keuangan.cash-flows.store'), [
+            'forecast_month' => '2026-10',
             'title' => '<script>alert(1)</script>',
             'direction' => 'income',
             'status' => 'potential',
-            'week_number' => 1,
             'due_date' => '2026-10-15',
             'amount' => 8500000,
         ])
-        ->assertRedirect(route('keuangan.cash-position.index'));
+        ->assertRedirect(route('keuangan.cash-position.index', ['forecast_month' => '2026-10']));
 
     $plan = FinanceCashFlow::query()->firstOrFail();
 
@@ -229,10 +229,10 @@ it('rejects invalid finance cash flow plans without storing them', function () {
 
     $this->actingAs($user)
         ->post(route('keuangan.cash-flows.store'), [
+            'forecast_month' => '2026-10',
             'title' => '',
             'direction' => 'transfer',
             'status' => 'unknown',
-            'week_number' => 1,
             'due_date' => '2026-10-11',
             'amount' => 0,
         ])
@@ -240,11 +240,11 @@ it('rejects invalid finance cash flow plans without storing them', function () {
 
     $this->actingAs($user)
         ->post(route('keuangan.cash-flows.store'), [
+            'forecast_month' => '2026-10',
             'title' => 'Rencana di luar periode',
             'direction' => 'income',
             'status' => 'confirmed',
-            'week_number' => 4,
-            'due_date' => '2026-10-20',
+            'due_date' => '2026-11-01',
             'amount' => 1000,
         ])
         ->assertSessionHasErrors('due_date');
@@ -284,7 +284,7 @@ it('allows finance users to remove an incorrect cash flow plan', function () {
     $this->actingAs($user)
         ->delete(route('keuangan.cash-flows.destroy', $plan))
         ->assertRedirect(route('keuangan.cash-position.index', [
-            'history_month' => $plan->due_date->format('Y-m'),
+            'forecast_month' => $plan->due_date->format('Y-m'),
         ]));
 
     $this->assertDatabaseMissing('finance_cash_flows', ['id' => $plan->id]);

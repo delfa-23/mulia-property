@@ -1,8 +1,8 @@
 <x-layouts::app :title="'Persetujuan Pembayaran Manual'">
     <div class="space-y-6">
         <div class="rounded-2xl border-l-4 border-amber-500 bg-[#10233D] px-6 py-5 shadow-md">
-            <h1 class="text-2xl font-bold text-white">Persetujuan Pembayaran Manual</h1>
-            <p class="mt-1 text-sm text-slate-200">Periksa bukti pembayaran sebelum mengubah status menjadi masuk.</p>
+            <h1 class="text-2xl font-bold !text-white">Persetujuan Pembayaran Manual</h1>
+            <p class="mt-1 text-sm font-semibold text-white">Periksa bukti pembayaran sebelum mengubah status menjadi masuk.</p>
         </div>
 
         @if(session('success'))

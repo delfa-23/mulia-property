@@ -10,6 +10,7 @@ class BookingPaymentSchedule extends Model
 {
     protected $fillable = [
         'property_id',
+        'booking_id',
         'title',
         'amount',
         'sort_order',
@@ -27,6 +28,11 @@ class BookingPaymentSchedule extends Model
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
     }
 
     public function payments(): HasMany

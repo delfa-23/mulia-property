@@ -105,7 +105,17 @@
                                 @endphp
                                 <td class="px-6 py-4">
                                     {{ $booking->booking_date?->format('d/m/Y') }}
-                                    @if(($booking->status === 'booking' && $booking->blocking_until?->isPast()) || $booking->histories->isNotEmpty())
+                                    @php
+                                        $feeSetting = $paymentSettings[$booking->payment_category] ?? null;
+                                        $feePaid = $booking->payments
+                                            ->where('stage', 'booking_fee')
+                                            ->where('approval_status', 'approved')
+                                            ->sum('amount');
+                                        $feeDeadlinePassed = $booking->blocking_until?->isPast()
+                                            && ($booking->payment_category === null
+                                                || ($feeSetting && (float) $feeSetting->booking_fee_amount > 0.009 && $feePaid < (float) $feeSetting->booking_fee_amount - 0.009));
+                                    @endphp
+                                    @if(($booking->status === 'booking' && $feeDeadlinePassed) || $booking->histories->isNotEmpty())
                                         <span role="alert" class="mt-1 block rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                                             @if($booking->histories->isNotEmpty())
                                                 Booking otomatis dibatalkan karena batas booking terlewati pada {{ $booking->blocking_until?->format('d/m/Y H:i') }}.

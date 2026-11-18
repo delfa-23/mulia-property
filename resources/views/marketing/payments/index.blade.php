@@ -22,80 +22,29 @@
             </span>
         </header>
 
-        @if($pendingManualPayments->isNotEmpty())
-            <section class="overflow-hidden rounded-xl border border-amber-400 bg-white shadow-lg dark:border-amber-700 dark:bg-zinc-900" aria-labelledby="pending-payment-heading">
-                <div class="flex flex-wrap items-start justify-between gap-3 border-l-4 border-amber-500 bg-[#FFF2CC] px-5 py-4 dark:bg-amber-950/30">
-                    <div>
-                        <h2 id="pending-payment-heading" class="font-bold text-amber-950 dark:text-amber-200">Pembayaran Manual Menunggu Persetujuan</h2>
-                        <p class="mt-1 text-sm font-bold text-amber-950 dark:text-amber-100">{{ $pendingManualPayments->count() }} pembayaran perlu diperiksa admin.</p>
-                    </div>
+        @if($pendingUnpaidReasons->isNotEmpty())
+            <section class="overflow-hidden rounded-xl border border-blue-400 bg-white shadow-lg dark:border-blue-700 dark:bg-zinc-900" aria-labelledby="pending-unpaid-reasons-heading">
+                <div class="border-l-4 border-blue-600 bg-blue-50 px-5 py-4 dark:bg-blue-950/40">
+                    <h2 id="pending-unpaid-reasons-heading" class="font-bold text-blue-950 dark:text-blue-100">Alasan Pembayaran Belum Lunas Menunggu Persetujuan</h2>
+                    <p class="mt-1 text-sm font-bold text-slate-950 dark:text-white">{{ $pendingUnpaidReasons->count() }} alasan perlu diperiksa admin.</p>
                 </div>
-                <div class="space-y-4 p-5">
-                    @foreach($pendingManualPayments as $payment)
-                        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-                            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                <div>
-                                    <p class="font-bold text-[#10233D] dark:text-white">{{ $payment->booking->customer->name ?? '-' }}</p>
-                                    <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">
-                                        {{ $payment->booking->lot->block->property->name ?? '-' }} · Kavling {{ $payment->booking->lot->lot_number }}
-                                    </p>
-                                    <p class="mt-2 text-sm text-zinc-700 dark:text-zinc-200">
-                                        {{ $payment->paymentSchedule?->title ?? match ($payment->stage) {
-                                            'dp', 'bank_settlement', 'booking' => 'Pembayaran Booking',
-                                            'booking_balance' => 'Sisa Pembayaran Booking',
-                                            'akad_fee' => 'Biaya Akad',
-                                            default => \Illuminate\Support\Str::headline($payment->stage),
-                                        } }}
-                                        · Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}
-                                        · {{ $payment->paid_at->format('d/m/Y H:i') }}
-                                    </p>
-                                    @if($payment->notes)<p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Keterangan: {{ $payment->notes }}</p>@endif
-                                    @if($payment->proof_path)
-                                        <a href="{{ Storage::url($payment->proof_path) }}" target="_blank" class="mt-2 inline-flex text-sm font-semibold text-blue-700 underline hover:text-blue-900">Lihat bukti pembayaran</a>
-                                    @endif
-
-                                    @if($pendingUnpaidReasons->isNotEmpty())
-                                        <section class="overflow-hidden rounded-xl border border-blue-400 bg-white shadow-lg dark:border-blue-700 dark:bg-zinc-900">
-                                            <div class="border-l-4 border-blue-600 bg-blue-50 px-5 py-4 dark:bg-blue-950/40">
-                                                <h2 class="font-bold text-blue-950 dark:text-blue-100">Alasan Pembayaran Belum Lunas Menunggu Persetujuan</h2>
-                                                                                                    <p class="mt-1 rounded bg-blue-100 px-2 py-1 text-sm font-bold text-slate-950 dark:bg-blue-950 dark:text-white">{{ $pendingUnpaidReasons->count() }} alasan perlu diperiksa admin.</p>
-                                            </div>
-                                            <div class="space-y-3 p-5">
-                                                @foreach($pendingUnpaidReasons as $reasonBooking)
-                                                    <article class="grid gap-4 rounded-xl border border-slate-300 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] dark:border-zinc-700 dark:bg-zinc-900">
-                                                        <div>
-                                                            <p class="font-bold text-slate-950 dark:text-white">{{ $reasonBooking->customer->name }}</p>
-                                                            <p class="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">{{ $reasonBooking->lot->block->property->name }} · Kavling {{ $reasonBooking->lot->lot_number }}</p>
-                                                            <p class="mt-2 rounded-lg bg-slate-100 p-3 text-sm text-slate-950 dark:bg-zinc-800 dark:text-white">{{ $reasonBooking->unpaid_payment_reason }}</p>
-                                                        </div>
-                                                        <div class="flex flex-col justify-center gap-2 sm:flex-row md:flex-col">
-                                                            <form method="POST" action="{{ route('marketing.payments.unpaid-reason.approve', $reasonBooking) }}">
-                                                                @csrf
-                                                                <button type="submit" class="min-h-11 w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">Setujui Alasan</button>
-                                                            </form>
-                                                            <form method="POST" action="{{ route('marketing.payments.unpaid-reason.reject', $reasonBooking) }}">
-                                                                @csrf
-                                                                <button type="submit" class="min-h-11 w-full rounded-lg border-2 border-red-950 bg-red-700 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-red-800 dark:border-red-300">TOLAK ALASAN</button>
-                                                            </form>
-                                                        </div>
-                                                    </article>
-                                                @endforeach
-                                            </div>
-                                        </section>
-                                    @endif
-                                </div>
-                                <div class="grid gap-2 sm:grid-cols-2 lg:min-w-80">
-                                    <form method="POST" action="{{ route('admin.payments.approve', $payment) }}">
-                                        @csrf
-                                        <button type="submit" class="min-h-11 w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-800">Setujui</button>
-                                    </form>
-                                    <form method="POST" action="{{ route('admin.payments.reject', $payment) }}" class="sm:col-span-2 grid gap-2 rounded-xl border border-red-400 bg-red-100 p-3 text-slate-900 shadow-sm dark:border-red-800 dark:bg-red-950/40 dark:text-white">
-                                        @csrf
-                                        <label for="rejection-reason-{{ $payment->id }}" class="text-sm font-bold text-slate-950 dark:text-white">Alasan penolakan</label>
-                                        <textarea id="rejection-reason-{{ $payment->id }}" name="rejection_reason" required maxlength="500" rows="2" class="w-full rounded-lg border-red-400 bg-white px-3 py-2 text-sm text-slate-950 placeholder:text-slate-400 focus:border-red-600 focus:ring-red-600 dark:border-red-700 dark:bg-zinc-950 dark:text-white"></textarea>
-                                        <button type="submit" class="min-h-11 rounded-lg border border-red-800 bg-red-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-800 dark:bg-red-600 dark:hover:bg-red-500">Tolak Pembayaran</button>
-                                    </form>
-                                </div>
+                <div class="space-y-3 p-5">
+                    @foreach($pendingUnpaidReasons as $reasonBooking)
+                        <article class="grid gap-4 rounded-xl border border-slate-300 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] dark:border-zinc-700 dark:bg-zinc-900">
+                            <div>
+                                <p class="font-bold text-slate-950 dark:text-white">{{ $reasonBooking->customer->name }}</p>
+                                <p class="mt-1 text-sm font-medium text-[#334155]">{{ $reasonBooking->lot->block->property->name }} · Kavling {{ $reasonBooking->lot->lot_number }}</p>
+                                <p class="mt-2 rounded-lg bg-slate-100 p-3 text-sm text-slate-950 dark:bg-zinc-800 dark:text-white">{{ $reasonBooking->unpaid_payment_reason }}</p>
+                            </div>
+                            <div class="flex flex-col justify-center gap-2 sm:flex-row md:flex-col">
+                                <form method="POST" action="{{ route('marketing.payments.unpaid-reason.approve', $reasonBooking) }}">
+                                    @csrf
+                                    <button type="submit" class="min-h-11 w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">Setujui Alasan</button>
+                                </form>
+                                <form method="POST" action="{{ route('marketing.payments.unpaid-reason.reject', $reasonBooking) }}">
+                                    @csrf
+                                    <button type="submit" class="min-h-11 w-full rounded-lg border-2 border-red-950 bg-red-700 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-red-800 dark:border-red-300">TOLAK ALASAN</button>
+                                </form>
                             </div>
                         </article>
                     @endforeach
@@ -169,7 +118,7 @@
             </div>
         </form>
 
-        <nav aria-label="Daftar pembayaran" class="flex flex-wrap gap-2">
+        <nav aria-label="Daftar pembayaran" class="flex flex-wrap items-center gap-2">
             <a
                 href="{{ route('marketing.payments.index', array_merge(request()->except('archive'), ['archive' => 'active'])) }}"
                 @class([
@@ -188,6 +137,13 @@
                 ])
                 wire:navigate
             >Arsip Pembayaran</a>
+            @if(auth()->user()->isAdmin())
+                <a
+                    href="{{ route('admin.payment-settings.index') }}"
+                    class="ml-auto inline-flex min-h-10 items-center justify-center rounded-lg bg-[#eb5120] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#d44215] focus:outline-none focus:ring-2 focus:ring-[#eb5120]/30 focus:ring-offset-2"
+                    wire:navigate
+                >Konfigurasi</a>
+            @endif
         </nav>
 
         <section class="overflow-hidden rounded-xl border border-[#dbe2ea] bg-white shadow-sm">
@@ -205,9 +161,15 @@
                         $summary = $row['summary'];
                         $nextStage = $row['nextStage'];
                         $pendingOrder = $row['pendingOrder'];
+                        $visiblePaymentStages = auth()->user()->isAdmin()
+                            ? $summary['stages']
+                            : array_values(array_filter($summary['stages'], fn (array $stage): bool => $stage['stage'] !== 'akad_fee'));
                         $hasPaid = $summary['total_paid'] > 0;
                         $bookingBalanceRemaining = max(0, $summary['house_price'] - $summary['booking_paid']);
-                        $isExpired = $booking->status === 'booking' && $booking->blocking_until?->isPast();
+                        $bookingFeeStage = collect($summary['stages'])->firstWhere('stage', 'booking_fee');
+                        $isExpired = $booking->status === 'booking'
+                            && $booking->blocking_until?->isPast()
+                            && ($booking->payment_category === null || ($bookingFeeStage !== null && $bookingFeeStage['remaining'] > 0.009));
                         $paymentStatus = $pendingOrder
                             ? 'Menunggu pembayaran'
                             : ($nextStage === null && $bookingBalanceRemaining <= 0.009
@@ -220,12 +182,12 @@
                                 <div>
                                     <h3 class="font-semibold text-slate-950 dark:text-white">
                                         {{ $booking->customer->name }}
-                                        <span class="font-normal text-slate-600 dark:text-slate-300">· Booking #{{ $booking->id }}</span>
+                                        <span class="font-normal text-slate-950 dark:text-white">· Booking #{{ $booking->id }}</span>
                                     </h3>
-                                    <p class="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                                    <p class="mt-1 text-sm font-medium text-slate-950 dark:text-white">
                                         {{ $booking->lot->block->property->name }} · Blok {{ $booking->lot->block->name }}/{{ $booking->lot->lot_number }}
                                     </p>
-                                    <p class="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                    <p class="mt-1 text-xs font-medium text-slate-900 dark:text-slate-100">
                                         Tanggal booking {{ $booking->booking_date?->format('d/m/Y') ?? '-' }}
                                         · Status {{ $booking->status === 'finish' ? 'Serah Terima Rumah' : ucfirst($booking->status) }}
                                     </p>
@@ -258,7 +220,7 @@
                                         <header class="flex items-start justify-between gap-4">
                                             <div>
                                                 <h3 id="schedule-dialog-title-{{ $booking->id }}" class="text-lg font-semibold">Tambah Pembayaran Booking</h3>
-                                                <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{{ $booking->lot->block->property->name }} · total jadwal tidak boleh melebihi harga kavling terendah.</p>
+                                                <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-300">{{ $booking->lot->block->property->name }} · total jadwal tidak boleh melebihi harga booking ini.</p>
                                             </div>
                                             <form method="dialog">
                                                 <button type="submit" class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700">Tutup</button>
@@ -289,7 +251,7 @@
                             @endif
 
                             <div class="grid gap-3 sm:grid-cols-2">
-                                @foreach($summary['stages'] as $stage)
+                                @foreach($visiblePaymentStages as $stage)
                                     @php
                                         $stagePendingOrder = $booking->paymentOrders->first(fn ($order): bool => $order->status === 'pending'
                                             && $order->stage === $stage['stage']
@@ -307,14 +269,14 @@
                                     @endphp
                                     <div x-data class="rounded-lg border border-slate-300 bg-slate-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
                                         <div class="flex justify-between gap-3 text-sm">
-                                            <span class="font-medium text-slate-800 dark:text-slate-200">{{ $stage['label'] }}</span>
+                                            <span class="font-medium text-slate-950 dark:text-white">{{ $stage['label'] }}</span>
                                             <span @class([
                                                 'rounded px-2 py-0.5 font-semibold',
                                                 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' => $stage['remaining'] <= 0.009,
-                                                'text-slate-700 dark:text-slate-200' => $stage['remaining'] > 0.009,
+                                                'text-slate-950 dark:text-white' => $stage['remaining'] > 0.009,
                                             ])>{{ $stage['remaining'] <= 0.009 ? 'Lunas' : 'Belum lunas' }}</span>
                                         </div>
-                                        <p class="mt-2 text-sm font-medium text-slate-700 dark:text-slate-200">Terbayar Rp {{ number_format($stage['paid'], 0, ',', '.') }}</p>
+                                        <p class="mt-2 text-sm font-medium text-slate-950 dark:text-white">Terbayar Rp {{ number_format($stage['paid'], 0, ',', '.') }}</p>
                                         <p class="text-sm font-semibold text-zinc-900 dark:text-white">Sisa Rp {{ number_format($stage['remaining'], 0, ',', '.') }}</p>
                                         @if($canAddPayment)
                                             <div class="mt-3 grid gap-2 sm:grid-cols-2">
@@ -336,7 +298,7 @@
                                         @elseif($stage['remaining'] > 0.009 && $stagePendingManualPayment)
                                             <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-center text-sm font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Menunggu persetujuan tahap ini</p>
                                         @elseif($stage['remaining'] > 0.009 && ! $stage['configured'] && ! in_array($booking->status, ['cancelled', 'finish'], true) && ! $isExpired && $archive !== 'archived')
-                                            <p class="mt-3 rounded-lg border border-zinc-300 px-3 py-2 text-center text-sm font-medium text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">Jadwal belum diatur admin</p>
+                                            <p class="mt-3 rounded-lg border border-zinc-300 px-3 py-2 text-center text-sm font-medium text-zinc-900 dark:border-zinc-600 dark:text-zinc-100">Jadwal belum diatur admin</p>
                                         @endif
                                         @if($canAddPayment)
                                             <dialog
@@ -397,16 +359,55 @@
                                                 </div>
                                             </dialog>
                                         @endif
+                                        @if(auth()->user()->isAdmin() && $stage['schedule_id'] !== null && $stage['remaining'] > 0.009 && $archive !== 'archived')
+                                            @php
+                                                $editScheduleUrl = route('admin.bookings.payment-schedules.update', [$booking, $stage['schedule_id']]);
+                                                $deleteScheduleUrl = route('admin.bookings.payment-schedules.destroy', [$booking, $stage['schedule_id']]);
+                                            @endphp
+                                            <div class="mt-3 flex flex-wrap items-start gap-2">
+                                                <details @if($errors->any() && (string) old('editing_schedule_id') === (string) $stage['schedule_id']) open @endif class="rounded-lg border border-slate-300 bg-white p-3 dark:border-zinc-600 dark:bg-zinc-900">
+                                                    <summary class="cursor-pointer text-sm font-semibold text-orange-700 dark:text-orange-300">Edit</summary>
+                                                    <form method="POST" action="{{ $editScheduleUrl }}" class="mt-3 space-y-3">
+                                                        @csrf
+                                                        @method('PUT')
+                                                        <input type="hidden" name="editing_schedule_id" value="{{ $stage['schedule_id'] }}">
+                                                        <div>
+                                                            <label for="schedule-edit-title-{{ $booking->id }}-{{ $stage['schedule_id'] }}" class="mb-1 block text-sm font-medium">Judul pembayaran</label>
+                                                            <input id="schedule-edit-title-{{ $booking->id }}-{{ $stage['schedule_id'] }}" name="title" value="{{ old('editing_schedule_id') == $stage['schedule_id'] ? old('title') : $stage['label'] }}" maxlength="100" required class="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800">
+                                                        </div>
+                                                        <div>
+                                                            <label for="schedule-edit-amount-{{ $booking->id }}-{{ $stage['schedule_id'] }}" class="mb-1 block text-sm font-medium">Nominal (Rp)</label>
+                                                            <input id="schedule-edit-amount-{{ $booking->id }}-{{ $stage['schedule_id'] }}" name="amount" value="{{ old('editing_schedule_id') == $stage['schedule_id'] ? old('amount') : number_format($stage['due'], 0, '', '') }}" inputmode="numeric" data-currency-input data-currency-min="1" required class="w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-800">
+                                                        </div>
+                                                        @if($errors->any() && (string) old('editing_schedule_id') === (string) $stage['schedule_id'])
+                                                            <p role="alert" class="text-sm font-medium text-red-700 dark:text-red-300">{{ $errors->first() }}</p>
+                                                        @endif
+                                                        <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700">Simpan perubahan</button>
+                                                    </form>
+                                                </details>
+                                                <form method="POST" action="{{ $deleteScheduleUrl }}" onsubmit="return confirm('Hapus atau nonaktifkan jadwal pembayaran booking ini?')">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <input type="hidden" name="editing_schedule_id" value="{{ $stage['schedule_id'] }}">
+                                                    <button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950">Hapus</button>
+                                                </form>
+                                            </div>
+                                        @endif
                                     </div>
                                 @endforeach
                             </div>
+                            @unless(auth()->user()->isAdmin())
+                                <p class="text-sm text-amber-700 dark:text-amber-300">Biaya Akad ditetapkan dan dikelola oleh admin.</p>
+                            @endunless
 
                             @if($pendingOrder)
                                 <section class="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
                                     <h4 class="font-semibold text-amber-900 dark:text-amber-200">Transaksi Midtrans belum terkonfirmasi</h4>
                                     <p class="text-sm text-amber-900 dark:text-amber-100">
                                         {{ $pendingOrder->paymentSchedule?->title ?? match ($pendingOrder->stage) {
-                                            'dp', 'booking' => 'Pembayaran Booking',
+                                            'booking_fee' => 'Booking Fee',
+                                            'dp' => 'Down Payment (DP)',
+                                            'booking' => 'Pembayaran Booking',
                                             'booking_balance' => 'Sisa Pembayaran Booking',
                                             'akad_fee' => 'Biaya Akad',
                                             default => \Illuminate\Support\Str::headline($pendingOrder->stage),
@@ -508,7 +509,7 @@
                                     <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-600/40 focus:ring-offset-2 dark:bg-emerald-600 dark:hover:bg-emerald-500">Arsipkan pembayaran lunas</button>
                                 </form>
                             @endif
-                            <a href="{{ route('marketing.bookings.show', $booking) }}" class="inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-orange-700 bg-white px-4 py-2.5 text-center text-sm font-bold text-orange-950 shadow-sm transition hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-600/30 focus:ring-offset-2 dark:border-orange-400 dark:bg-zinc-900 dark:text-orange-100 dark:hover:bg-orange-950" wire:navigate>Lihat detail booking dan riwayat pembayaran</a>
+                            <a href="{{ route('marketing.bookings.show', $booking) }}" class="inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-orange-700 bg-white px-4 py-2.5 text-center text-sm font-bold text-[#7c2d12] shadow-sm transition hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-600/30 focus:ring-offset-2 dark:border-orange-400 dark:bg-zinc-900 dark:hover:bg-orange-950" wire:navigate>Lihat detail booking dan riwayat pembayaran</a>
                         </div>
 
                     </article>

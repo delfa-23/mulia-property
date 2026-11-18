@@ -21,7 +21,10 @@ class Booking extends Model
         'lead_id',
         'created_by',
         'booking_date',
+        'payment_category',
         'blocking_until',
+        'dp_deadline_at',
+        'dp_deadline_alerted_at',
         'house_price_snapshot',
         'dp_percentage',
         'akad_fee',
@@ -39,6 +42,8 @@ class Booking extends Model
     {
         return [
             'booking_date' => 'date',
+            'dp_deadline_at' => 'datetime',
+            'dp_deadline_alerted_at' => 'datetime',
             'blocking_until' => 'datetime',
             'payment_archived_at' => 'datetime',
             'house_price_snapshot' => 'decimal:2',
@@ -107,5 +112,10 @@ class Booking extends Model
     public function paymentOrders(): HasMany
     {
         return $this->hasMany(BookingPaymentOrder::class)->latest();
+    }
+
+    public function bookingPaymentSchedules(): HasMany
+    {
+        return $this->hasMany(BookingPaymentSchedule::class)->orderBy('sort_order')->orderBy('id');
     }
 }

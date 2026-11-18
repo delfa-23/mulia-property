@@ -7,6 +7,7 @@
 
         <form method="GET" action="{{ route('keuangan.cash-position.index') }}" class="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end dark:border-zinc-700 dark:bg-zinc-900">
             <input type="hidden" name="history_month" value="{{ $selectedHistoryMonth }}">
+            <input type="hidden" name="forecast_month" value="{{ $selectedForecastMonth }}">
             <div class="w-full max-w-xl space-y-1.5">
                 <label for="site-plan-property" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Denah perumahan</label>
                 <select id="site-plan-property" name="site_plan_property_id" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-800">
@@ -144,9 +145,24 @@
 
         <section class="space-y-4">
             <div>
-                <h2 class="text-lg font-semibold text-[#10233D]">Rencana Pemasukan &amp; Pengeluaran</h2>
-                <p class="text-sm text-zinc-500">Setiap periode adalah minggu kalender Senin–Minggu. Minggu 1 dimulai dari minggu berjalan.</p>
+                <h2 class="text-lg font-semibold text-[#10233D]">Rencana Pemasukan &amp; Pengeluaran — {{ $forecastMonthLabel }}</h2>
+                <p class="text-sm text-zinc-500">Pilih bulan sampai Desember 2027. Setiap bulan dibagi menjadi 4 minggu: tanggal 1–7, 8–14, 15–21, dan 22–akhir bulan. Rencana bulan yang sudah lewat tersimpan di Riwayat.</p>
             </div>
+
+            <form method="GET" action="{{ route('keuangan.cash-position.index') }}" class="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end dark:border-zinc-700 dark:bg-zinc-900">
+                @if($selectedHistoryMonth)
+                    <input type="hidden" name="history_month" value="{{ $selectedHistoryMonth }}">
+                @endif
+                <div class="w-full max-w-sm space-y-1.5">
+                    <label for="forecast-month" class="block text-sm font-medium text-zinc-700 dark:text-zinc-200">Bulan rencana</label>
+                    <select id="forecast-month" name="forecast_month" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
+                        @foreach($forecastMonthOptions as $month => $label)
+                            <option value="{{ $month }}" @selected($selectedForecastMonth === $month)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="rounded-lg bg-[#10233D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]">Tampilkan bulan</button>
+            </form>
 
             <div class="grid gap-4 lg:grid-cols-2">
                 @foreach($cashFlowForecasts as $weekNumber => $forecast)
@@ -202,25 +218,32 @@
                             <h3 class="text-base font-semibold text-[#10233D] dark:text-white">Riwayat Bulanan</h3>
                             @if($historyIsArchived)
                                 <span class="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-700">Diarsipkan otomatis</span>
-                            @elseif($historyIsFuture)
-                                <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">Rencana mendatang</span>
-                            @else
-                                <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">Bulan berjalan</span>
+                            @elseif($historyMonthLabels->isEmpty())
+                                <span class="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-700">Belum ada riwayat</span>
                             @endif
                         </div>
-                        <p class="mt-1 text-sm text-zinc-500">Ringkasan {{ $historyMonthLabels[$selectedHistoryMonth] }}. Pilih bulan untuk melihat seluruh rencana beserta detailnya.</p>
+                        <p class="mt-1 text-sm text-zinc-500">
+                            @if($selectedHistoryMonth)
+                                Ringkasan {{ $historyMonthLabels[$selectedHistoryMonth] }}. Pilih bulan untuk melihat seluruh rencana beserta detailnya.
+                            @else
+                                Rencana akan muncul di sini setelah bulannya berlalu.
+                            @endif
+                        </p>
                     </div>
-                    <form method="GET" action="{{ route('keuangan.cash-position.index') }}" class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
-                        <div class="min-w-52 space-y-1.5">
-                            <label for="history-month" class="block text-sm font-medium text-zinc-700 dark:text-zinc-200">Bulan riwayat</label>
-                            <select id="history-month" name="history_month" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
-                                @foreach($historyMonthLabels as $month => $label)
-                                    <option value="{{ $month }}" @selected($selectedHistoryMonth === $month)>{{ $label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <button type="submit" class="rounded-lg bg-[#10233D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]">Lihat bulan</button>
-                    </form>
+                    @if($historyMonthLabels->isNotEmpty())
+                        <form method="GET" action="{{ route('keuangan.cash-position.index') }}" class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+                            <input type="hidden" name="forecast_month" value="{{ $selectedForecastMonth }}">
+                            <div class="min-w-52 space-y-1.5">
+                                <label for="history-month" class="block text-sm font-medium text-zinc-700 dark:text-zinc-200">Bulan riwayat</label>
+                                <select id="history-month" name="history_month" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
+                                    @foreach($historyMonthLabels as $month => $label)
+                                        <option value="{{ $month }}" @selected($selectedHistoryMonth === $month)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <button type="submit" class="rounded-lg bg-[#10233D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1e3a5f]">Lihat bulan</button>
+                        </form>
+                    @endif
                 </div>
 
                 <div class="grid gap-3 border-b border-zinc-200 p-5 sm:grid-cols-2 xl:grid-cols-3 dark:border-zinc-700">
@@ -278,8 +301,14 @@
                             @empty
                                 <tr>
                                     <td colspan="7" class="px-5 py-10 text-center">
-                                        <p class="font-medium text-zinc-700">Belum ada rencana pada {{ $historyMonthLabels[$selectedHistoryMonth] }}.</p>
-                                        <p class="mt-1 text-sm text-zinc-500">Rencana yang sudah lewat akan tersimpan di sini sebagai arsip bulanan.</p>
+                                        <p class="font-medium text-zinc-700">
+                                            @if($selectedHistoryMonth)
+                                                Belum ada rencana pada {{ $historyMonthLabels[$selectedHistoryMonth] }}.
+                                            @else
+                                                Belum ada rencana dari bulan yang sudah lewat.
+                                            @endif
+                                        </p>
+                                        <p class="mt-1 text-sm text-zinc-500">Rencana bulan yang sudah lewat tetap tersimpan sebagai arsip bulanan.</p>
                                     </td>
                                 </tr>
                             @endforelse
@@ -296,13 +325,13 @@
             <form
                 method="POST"
                 action="{{ route('keuangan.cash-flows.store') }}"
-                x-data="{ weekNumber: @js($selectedWeek), dateBounds: @js($weekDateBounds) }"
                 class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
             >
                 @csrf
+                <input type="hidden" name="forecast_month" value="{{ $selectedForecastMonth }}">
                 <div class="border-b border-zinc-200 px-5 py-4 dark:border-zinc-700">
                     <h3 class="text-base font-semibold text-[#10233D] dark:text-white">Tambah Rencana</h3>
-                    <p class="mt-1 text-sm text-zinc-500">Catat pemasukan atau pengeluaran pada minggu yang sesuai.</p>
+                    <p class="mt-1 text-sm text-zinc-500">Pilih tanggal jatuh tempo; rencana akan otomatis masuk ke minggu yang sesuai.</p>
                 </div>
 
                 <div class="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-6">
@@ -330,16 +359,8 @@
                         </select>
                     </div>
                     <div class="space-y-1.5 xl:col-span-2">
-                        <label for="cash-flow-week" class="block text-sm font-medium text-zinc-700 dark:text-zinc-200">Minggu</label>
-                        <select id="cash-flow-week" name="week_number" x-model="weekNumber" required class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
-                            @foreach($weekOptions as $number => $week)
-                                <option value="{{ $number }}" @selected((string) old('week_number', 1) === (string) $number)>Minggu ke-{{ $number }} ({{ $week['label'] }})</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="space-y-1.5 xl:col-span-2">
-                        <label for="cash-flow-due-date" class="block text-sm font-medium text-zinc-700 dark:text-zinc-200">Tanggal</label>
-                        <input id="cash-flow-due-date" name="due_date" type="date" value="{{ old('due_date') }}" :min="dateBounds[weekNumber].min" :max="dateBounds[weekNumber].max" required class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
+                        <label for="cash-flow-due-date" class="block text-sm font-medium text-zinc-700 dark:text-zinc-200">Tanggal jatuh tempo</label>
+                        <input id="cash-flow-due-date" name="due_date" type="date" value="{{ old('due_date') }}" min="{{ $selectedForecastMonth === $today->format('Y-m') ? $today->toDateString() : $forecastMonthStart->toDateString() }}" max="{{ $forecastMonthEnd->toDateString() }}" required class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm shadow-sm outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
                     </div>
                     <div class="space-y-1.5 sm:col-span-2 xl:col-span-6">
                         <label for="cash-flow-property" class="block text-sm font-medium text-zinc-700 dark:text-zinc-200">Perumahan <span class="font-normal text-zinc-500">(opsional)</span></label>

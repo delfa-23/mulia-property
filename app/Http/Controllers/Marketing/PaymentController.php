@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Marketing;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking;
-use App\Models\BookingPayment;
 use App\Models\Property;
 use App\Services\BookingPaymentSummaryService;
 use App\Services\MarketingLeadAccess;
@@ -158,14 +157,6 @@ class PaymentController extends Controller
             'archive' => $archive,
             'midtransConfigured' => is_string(config('services.midtrans.server_key'))
                 && config('services.midtrans.server_key') !== '',
-            'pendingManualPayments' => $request->user()?->isAdmin()
-                ? BookingPayment::query()
-                    ->where('payment_channel', 'manual')
-                    ->where('approval_status', 'pending')
-                    ->with(['booking.customer', 'booking.lot.block.property', 'paymentSchedule', 'recordedBy'])
-                    ->latest('paid_at')
-                    ->get()
-                : collect(),
             'pendingUnpaidReasons' => $request->user()?->isAdmin()
                 ? Booking::query()
                     ->whereNotNull('unpaid_payment_reason')

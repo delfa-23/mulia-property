@@ -105,6 +105,15 @@ class Lot extends Model
         return min(100, max(0, $weightedProgress));
     }
 
+    public function constructionProgressValue(): float
+    {
+        $rab = (float) $this->budgets
+            ->where('purpose', 'pembangunan')
+            ->sum('amount');
+
+        return $this->constructionProgressPercentage() * $rab / 100;
+    }
+
     public function pemberkasanDocuments(): HasMany
     {
         return $this->hasMany(PemberkasanDocument::class);

@@ -92,7 +92,6 @@ class ProgressController extends Controller
             'constructionProgresses.stage',
             'constructionProgresses.updatedBy',
         ]);
-        $constructionRealizationTotal = (float) $lot->construction_realization;
         $progressHistories = ConstructionProgressHistory::query()
             ->where('lot_id', $lot->id)
             ->with(['stage', 'updatedBy'])
@@ -114,7 +113,6 @@ class ProgressController extends Controller
                 'lot',
                 'stages',
                 'progressHistories',
-                'constructionRealizationTotal',
             )
         );
     }
@@ -161,26 +159,6 @@ class ProgressController extends Controller
         $this->saveProgress($request, $lot, $validated);
 
         return $this->progressRedirect($property, $block, $lot, 'Progress pembangunan berhasil diperbarui.');
-    }
-
-    public function updateRealization(
-        Request $request,
-        Property $property,
-        Block $block,
-        Lot $lot,
-    ): RedirectResponse {
-        abort_unless($request->user()->isAdmin(), 403);
-        $this->assertLotScope($property, $block, $lot);
-
-        $validated = $request->validate([
-            'construction_realization' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
-        ]);
-
-        $lot->update([
-            'construction_realization' => $validated['construction_realization'],
-        ]);
-
-        return $this->progressRedirect($property, $block, $lot, 'Total realisasi pengeluaran berhasil diperbarui.');
     }
 
     public function destroy(

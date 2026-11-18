@@ -53,6 +53,15 @@
                             Persetujuan Pembayaran
                         </flux:sidebar.item>
 
+                        <flux:sidebar.item
+                            icon="banknotes"
+                            :href="route('admin.payment-settings.index')"
+                            :current="request()->routeIs('admin.payment-settings.*')"
+                            wire:navigate
+                        >
+                            Konfigurasi Pembayaran
+                        </flux:sidebar.item>
+
                     </flux:sidebar.group>
 
                 @endif

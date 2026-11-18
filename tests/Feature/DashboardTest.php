@@ -1168,3 +1168,70 @@ test('marketing dashboard shows system-wide booking and lot availability', funct
 
     $this->assertModelExists($availableLot);
 });
+
+test('admins can update the global manual construction expense on the dashboard', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $property = Property::create(['name' => 'Perumahan Filter Dashboard']);
+
+    $this->actingAs($admin)
+        ->put(route('pembangunan.dashboard.current-expense.update', ['property_id' => $property->id]), [
+            'manual_total_expense' => 123450000,
+        ])
+        ->assertRedirect(route('pembangunan.dashboard', ['property_id' => $property->id]))
+        ->assertSessionHas('success', 'Total realisasi pengeluaran saat ini berhasil diperbarui.');
+
+    $this->assertDatabaseHas('construction_dashboard_settings', [
+        'id' => 1,
+        'manual_total_expense' => '123450000.00',
+        'updated_by' => $admin->id,
+    ]);
+
+    $this->get(route('pembangunan.dashboard', ['property_id' => $property->id]))
+        ->assertSee('Total Realisasi Pengeluaran Saat Ini')
+        ->assertSee('Rp 123.450.000')
+        ->assertSee('Diisi manual oleh Admin Keuangan.')
+        ->assertSee('name="manual_total_expense"', false);
+});
+
+test('non-admin users cannot update the manual construction expense', function () {
+    $division = Division::firstOrCreate(
+        ['slug' => 'pembangunan'],
+        ['name' => 'Pembangunan', 'is_active' => true]
+    );
+    $user = User::factory()->create([
+        'role' => 'staff_pembangunan',
+        'division_id' => $division->id,
+    ]);
+
+    $this->actingAs($user)
+        ->put(route('pembangunan.dashboard.current-expense.update'), [
+            'manual_total_expense' => 50000000,
+        ])
+        ->assertForbidden();
+
+    $this->get(route('pembangunan.dashboard'))
+        ->assertSee('Total Realisasi Pengeluaran Saat Ini')
+        ->assertDontSee('name="manual_total_expense"', false);
+
+    $this->assertDatabaseHas('construction_dashboard_settings', [
+        'id' => 1,
+        'manual_total_expense' => '0.00',
+        'updated_by' => null,
+    ]);
+});
+
+test('admins cannot set a negative manual construction expense', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+
+    $this->actingAs($admin)
+        ->put(route('pembangunan.dashboard.current-expense.update'), [
+            'manual_total_expense' => -1,
+        ])
+        ->assertSessionHasErrors('manual_total_expense');
+
+    $this->assertDatabaseHas('construction_dashboard_settings', [
+        'id' => 1,
+        'manual_total_expense' => '0.00',
+        'updated_by' => null,
+    ]);
+});

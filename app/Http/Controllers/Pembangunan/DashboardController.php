@@ -10,7 +10,9 @@ use App\Models\ConstructionProgress;
 use App\Models\ConstructionStage;
 use App\Models\Lot;
 use App\Models\Property;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -177,6 +179,9 @@ class DashboardController extends Controller
                         ->whereNull('lot_id')
                         ->whereNull('facility_id'));
             }));
+        $manualTotalExpense = (float) DB::table('construction_dashboard_settings')
+            ->where('id', 1)
+            ->value('manual_total_expense');
         $constructionBudget = Budget::query()
             ->where('purpose', 'pembangunan')
             ->whereNull('facility_id')
@@ -281,6 +286,7 @@ class DashboardController extends Controller
                 'lotStatusTotal',
                 'constructionBudget',
                 'constructionExpense',
+                'manualTotalExpense',
                 'constructionDeviation',
                 'totalBudget',
                 'totalFacilityBudget',
@@ -292,5 +298,26 @@ class DashboardController extends Controller
                 'facilityProgressChart',
             )
         );
+    }
+
+    public function updateCurrentExpense(Request $request): RedirectResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $validated = $request->validate([
+            'manual_total_expense' => ['required', 'numeric', 'decimal:0,2', 'min:0'],
+        ]);
+
+        DB::table('construction_dashboard_settings')
+            ->where('id', 1)
+            ->update([
+                'manual_total_expense' => $validated['manual_total_expense'],
+                'updated_by' => $request->user()->id,
+                'updated_at' => now(),
+            ]);
+
+        return redirect()
+            ->route('pembangunan.dashboard', $request->query())
+            ->with('success', 'Total realisasi pengeluaran saat ini berhasil diperbarui.');
     }
 }

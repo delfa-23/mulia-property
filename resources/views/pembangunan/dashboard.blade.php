@@ -85,6 +85,28 @@
             </div>
         </section>
 
+        <section aria-label="Total realisasi pengeluaran saat ini" class="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-zinc-700 dark:bg-zinc-900">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-600 dark:text-zinc-300">Total Realisasi Pengeluaran Saat Ini</h2>
+                <p class="mt-1 text-2xl font-bold text-slate-950 dark:text-white">Rp {{ number_format((float) $manualTotalExpense, 0, ',', '.') }}</p>
+                <p class="mt-1 text-xs text-slate-500 dark:text-zinc-400">Diisi manual oleh Admin Keuangan.</p>
+            </div>
+            @if(auth()->user()->isAdmin())
+                <form method="POST" action="{{ route('pembangunan.dashboard.current-expense.update', request()->query()) }}" class="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row sm:items-end">
+                    @csrf
+                    @method('PUT')
+                    <div class="min-w-0 flex-1">
+                        <label for="manual-total-expense" class="mb-1 block text-sm font-medium text-slate-700 dark:text-zinc-300">Perbarui nilai (Rp)</label>
+                        <input id="manual-total-expense" name="manual_total_expense" type="text" inputmode="decimal" data-currency-input data-currency-min="0" data-currency-step="0.01" value="{{ old('manual_total_expense', $manualTotalExpense) }}" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
+                        @error('manual_total_expense')
+                            <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <button type="submit" class="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700">Simpan</button>
+                </form>
+            @endif
+        </section>
+
         <section aria-label="Ringkasan progress pembangunan" class="grid gap-3 sm:grid-cols-3">
             <article class="rounded-xl border border-slate-200 border-l-4 border-l-blue-600 bg-white p-5 shadow-sm dark:border-zinc-700 dark:border-l-blue-500 dark:bg-zinc-900">
                 <p class="text-sm font-semibold text-slate-600 dark:text-zinc-300">Total Kavling</p>

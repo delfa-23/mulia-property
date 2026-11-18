@@ -4,6 +4,12 @@
             ->first(fn (array $stage): bool => $stage['remaining'] > 0.009);
         $pendingPaymentOrder = $booking->paymentOrders
             ->first(fn ($order): bool => $order->status === 'pending');
+        $dpStage = collect($paymentSummary['stages'])->firstWhere('stage', 'dp');
+        $dpDeadlinePassed = $booking->dp_deadline_at?->isPast()
+            && ($dpStage['remaining'] ?? 0) > 0.009;
+        $bookingFeeStage = collect($paymentSummary['stages'])->firstWhere('stage', 'booking_fee');
+        $bookingFeeDeadlinePassed = $booking->blocking_until?->isPast()
+            && ($booking->payment_category === null || ($bookingFeeStage !== null && $bookingFeeStage['remaining'] > 0.009));
         $autoCancelledByDeadline = $booking->histories->contains(
             fn ($history): bool => $history->to_status === 'cancelled'
                 && $history->notes === 'Booking dibatalkan otomatis karena batas blocking terlewati.'
@@ -42,12 +48,17 @@
             <div role="status" class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{{ session('info') }}</div>
         @endif
 
-        @if(($booking->status === 'booking' && $booking->blocking_until?->isPast() && ! $pendingPaymentOrder) || $autoCancelledByDeadline)
+        @if(($booking->status === 'booking' && $bookingFeeDeadlinePassed && ! $pendingPaymentOrder) || $autoCancelledByDeadline)
             <p role="alert" class="rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
                 @if($autoCancelledByDeadline)
                     Booking otomatis dibatalkan karena batas booking terlewati pada {{ $booking->blocking_until?->format('d/m/Y H:i') }}.
                 @else
                     Deadline blocking {{ $booking->customer->name }} terlewati pada {{ $booking->blocking_until->format('d/m/Y H:i') }}. Booking akan dihapus otomatis jika belum ada pembayaran.
+                @endif
+                @if($dpDeadlinePassed)
+                    <p role="alert" class="rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                        Deadline DP terlewati pada {{ $booking->dp_deadline_at->format('d/m/Y H:i') }}. Booking tetap aktif; periksa alert pembayaran DP.
+                    </p>
                 @endif
             </p>
         @endif
@@ -69,7 +80,9 @@
                 <p class="mt-2 text-xl font-semibold">{{ ucfirst($booking->status) }}</p>
                 <dl class="mt-4 space-y-3 text-sm">
                     <div><dt class="text-zinc-500">Tanggal Booking</dt><dd class="font-medium">{{ $booking->booking_date?->format('d/m/Y') }}</dd></div>
-                    <div><dt class="text-zinc-500">Batas Booking</dt><dd class="font-medium">{{ $booking->blocking_until?->format('d/m/Y H:i') ?? 'Tidak ditentukan' }}</dd></div>
+                    <div><dt class="text-zinc-500">Cara Pembayaran</dt><dd class="font-medium">{{ strtoupper($booking->payment_category ?? 'cash') }}</dd></div>
+                    <div><dt class="text-zinc-500">Deadline Booking Fee</dt><dd class="font-medium">{{ $booking->blocking_until?->format('d/m/Y H:i') ?? 'Tidak ditentukan' }}</dd></div>
+                    <div><dt class="text-zinc-500">Deadline DP</dt><dd class="font-medium">{{ $booking->dp_deadline_at?->format('d/m/Y H:i') ?? 'Tidak ditentukan' }}</dd></div>
                     <div><dt class="text-zinc-500">Catatan</dt><dd class="font-medium">{{ $booking->notes ?: '-' }}</dd></div>
                 </dl>
             </section>
@@ -207,7 +220,9 @@
                                         <p class="font-medium text-zinc-800 dark:text-zinc-100">
                                             {{ $payment->paid_at?->format('d/m/Y H:i') ?? '-' }}
                                             · {{ $payment->paymentSchedule?->title ?? match ($payment->stage) {
-                                                'dp', 'bank_settlement', 'booking' => 'Pembayaran Booking',
+                                                'booking_fee' => 'Booking Fee',
+                                                'dp' => 'Down Payment (DP)',
+                                                'bank_settlement', 'booking' => 'Pembayaran Booking',
                                                 'booking_balance' => 'Sisa Pembayaran Booking',
                                                 'akad_fee' => 'Biaya Akad',
                                                 default => \Illuminate\Support\Str::headline($payment->stage),
@@ -243,7 +258,7 @@
                                         <p class="font-medium text-zinc-800 dark:text-zinc-100">
                                             {{ $paymentOrder->created_at?->format('d/m/Y H:i') ?? '-' }}
                                             · {{ $paymentOrder->paymentSchedule?->title ?? match ($paymentOrder->stage) {
-                                                'dp', 'booking' => 'Pembayaran Booking',
+                                                'booking' => 'Pembayaran Booking',
                                                 'booking_balance' => 'Sisa Pembayaran Booking',
                                                 'akad_fee' => 'Biaya Akad',
                                                 default => \Illuminate\Support\Str::headline($paymentOrder->stage),

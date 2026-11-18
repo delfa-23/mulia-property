@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Booking;
 use App\Models\BookingPaymentSchedule;
+use App\Models\BookingPaymentSetting;
 
 class BookingPaymentSummaryService
 {
@@ -36,6 +37,12 @@ class BookingPaymentSummaryService
             ? $booking->paymentOrders->contains('stage', 'dp')
             : $booking->paymentOrders()->where('stage', 'dp')->exists();
         $hasLegacyPayments = $legacyPayments->isNotEmpty() || $legacyPaymentOrdersExist;
+        $categorySetting = BookingPaymentSetting::query()
+            ->where('payment_category', $booking->payment_category ?? 'cash')
+            ->first();
+        $bookingFeeAmount = (float) ($categorySetting?->booking_fee_amount ?? 0);
+        $dpAmount = (float) ($categorySetting?->dp_amount ?? 0);
+        $hasCategoryPlan = $bookingFeeAmount > 0.009 || $dpAmount > 0.009;
         $property = $booking->lot->block->property;
         $usedScheduleIds = $payments->pluck('booking_payment_schedule_id')
             ->merge(
@@ -47,10 +54,12 @@ class BookingPaymentSummaryService
             ->unique();
         $schedules = $property->relationLoaded('bookingPaymentSchedules')
             ? $property->bookingPaymentSchedules
-                ->filter(fn (BookingPaymentSchedule $schedule): bool => $schedule->is_active || $usedScheduleIds->contains($schedule->id))
+                ->filter(fn (BookingPaymentSchedule $schedule): bool => (int) $schedule->booking_id === $booking->id
+                    && ($schedule->is_active || $usedScheduleIds->contains($schedule->id)))
                 ->values()
             : BookingPaymentSchedule::query()
                 ->where('property_id', $property->id)
+                ->where('booking_id', $booking->id)
                 ->where(function ($query) use ($booking): void {
                     $query->where('is_active', true)
                         ->orWhereHas('payments', fn ($payments) => $payments->where('booking_id', $booking->id))
@@ -60,7 +69,33 @@ class BookingPaymentSummaryService
                 ->orderBy('id')
                 ->get();
 
-        if ($schedules->isEmpty() || $hasLegacyPayments) {
+        if ($hasCategoryPlan) {
+            if ($bookingFeeAmount > 0.009) {
+                $stages[] = $this->makeStage(
+                    'booking_fee',
+                    'booking_fee',
+                    null,
+                    'Booking Fee',
+                    $bookingFeeAmount,
+                    (float) $approvedPayments->where('stage', 'booking_fee')->sum('amount'),
+                    true,
+                );
+            }
+
+            if ($dpAmount > 0.009) {
+                $stages[] = $this->makeStage(
+                    'dp',
+                    'dp',
+                    null,
+                    'Down Payment (DP)',
+                    $dpAmount,
+                    (float) $approvedPayments->where('stage', 'dp')->sum('amount'),
+                    true,
+                );
+            }
+        }
+
+        if (! $hasCategoryPlan && ($schedules->isEmpty() || $hasLegacyPayments)) {
             $bookingPaid = (float) $legacyPayments->sum('amount')
                 + (float) $approvedPayments->where('stage', 'booking')->whereNull('booking_payment_schedule_id')->sum('amount')
                 + (float) $approvedPayments->where('stage', 'booking_balance')->sum('amount');
@@ -74,8 +109,6 @@ class BookingPaymentSummaryService
                 $hasLegacyPayments,
             );
         } else {
-            $scheduledTotal = (float) $schedules->sum('amount');
-
             foreach ($schedules as $schedule) {
                 $paid = (float) $approvedPayments
                     ->where('booking_payment_schedule_id', $schedule->id)
@@ -87,27 +120,6 @@ class BookingPaymentSummaryService
                     $schedule->title,
                     (float) $schedule->amount,
                     $paid,
-                    true,
-                );
-            }
-
-            $balanceDue = max(0, round($housePrice - $scheduledTotal, 2));
-            $hasBookingBalanceActivity = $payments->contains('stage', 'booking_balance')
-                || ($booking->relationLoaded('paymentOrders')
-                    ? $booking->paymentOrders->contains('stage', 'booking_balance')
-                    : $booking->paymentOrders()->where('stage', 'booking_balance')->exists());
-
-            if ($balanceDue > 0.009 && $hasBookingBalanceActivity) {
-                $balancePaid = (float) $approvedPayments
-                    ->where('stage', 'booking_balance')
-                    ->sum('amount');
-                $stages[] = $this->makeStage(
-                    'booking_balance',
-                    'booking_balance',
-                    null,
-                    'Sisa Pembayaran Booking',
-                    $balanceDue,
-                    $balancePaid,
                     true,
                 );
             }
@@ -125,9 +137,9 @@ class BookingPaymentSummaryService
         );
 
         $totalPaid = (float) $approvedPayments->sum('amount');
-        $bookingPaid = (float) collect($stages)
-            ->whereIn('stage', ['dp', 'booking', 'booking_balance'])
-            ->sum('paid');
+        $bookingPaid = (float) $approvedPayments
+            ->whereIn('stage', ['booking_fee', 'dp', 'bank_settlement', 'booking', 'booking_balance'])
+            ->sum('amount');
 
         return [
             'stages' => $stages,

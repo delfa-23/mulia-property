@@ -3,6 +3,7 @@
 use App\Exports\ConstructionProgressByLotExport;
 use App\Models\Block;
 use App\Models\Booking;
+use App\Models\Budget;
 use App\Models\ConstructionProgress;
 use App\Models\ConstructionProgressHistory;
 use App\Models\ConstructionStage;
@@ -350,7 +351,6 @@ test('construction staff can create progress for an admin-defined stage', functi
         'notes' => null,
     ]);
     $this->get(route('pembangunan.progress.show', [$property, $block, $lot]))
-        ->assertSee('2.00000%')
         ->assertSee('2.00%');
     expect(ConstructionProgressHistory::query()->where('construction_progress_id', $progress->id)->count())->toBe(2);
 });
@@ -398,7 +398,7 @@ test('construction staff can report zero percent on a later stage before earlier
         'progress' => 0,
     ]);
     $this->get(route('pembangunan.progress.show', [$property, $block, $lot]))
-        ->assertSee('Progress Fisik')
+        ->assertSee('Persen Progress')
         ->assertSee('0.00%');
 });
 
@@ -481,7 +481,7 @@ test('deleting current lot progress preserves its history', function () {
         ->assertSee('Pondasi');
 });
 
-test('lot progress screens total realization across all construction stages', function () {
+test('lot progress screens calculate the progress value from weighted progress and the lot budget', function () {
     $division = Division::firstOrCreate(
         ['slug' => 'pembangunan'],
         ['name' => 'Pembangunan', 'is_active' => true]
@@ -501,6 +501,14 @@ test('lot progress screens total realization across all construction stages', fu
         'house_price' => 350000000,
         'construction_realization' => 60000000,
     ]);
+    Budget::create([
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'purpose' => 'pembangunan',
+        'name' => 'RAB Kavling',
+        'category' => 'Struktur',
+        'amount' => 200000000,
+    ]);
     $firstStage = $property->constructionStages()->create([
         'name' => 'Pondasi',
         'order' => 1,
@@ -511,7 +519,7 @@ test('lot progress screens total realization across all construction stages', fu
         'name' => 'Struktur',
         'order' => 2,
         'min_progress' => 51,
-        'max_progress' => 100,
+        'max_progress' => 50,
     ]);
 
     ConstructionProgress::create([
@@ -531,22 +539,21 @@ test('lot progress screens total realization across all construction stages', fu
 
     $this->actingAs($user)
         ->get(route('pembangunan.progress.index'))
-        ->assertSee('Rp 60.000.000');
+        ->assertSee('Persen Progress')
+        ->assertSee('Nilai Progress')
+        ->assertSee('50.00%')
+        ->assertSee('Rp 100.000.000')
+        ->assertDontSee('Rp 60.000.000');
 
     $this->get(route('pembangunan.progress.show', [$property, $block, $lot]))
-        ->assertSee('Realisasi Pengeluaran')
-        ->assertSee('Rp 60.000.000');
+        ->assertSee('Persen Progress')
+        ->assertSee('Nilai Progress')
+        ->assertSee('50.00%')
+        ->assertSee('Rp 100.000.000')
+        ->assertDontSee('name="construction_realization"', false);
 });
 
-test('only admin can update the total lot construction realization', function () {
-    $division = Division::firstOrCreate(
-        ['slug' => 'pembangunan'],
-        ['name' => 'Pembangunan', 'is_active' => true]
-    );
-    $staff = User::factory()->create([
-        'role' => 'staff_pembangunan',
-        'division_id' => $division->id,
-    ]);
+test('admins cannot manually edit the calculated lot progress value', function () {
     $admin = User::factory()->create(['role' => 'admin']);
     $property = Property::create(['name' => 'Perumahan Realisasi Total']);
     $block = Block::create([
@@ -559,22 +566,31 @@ test('only admin can update the total lot construction realization', function ()
         'house_price' => 350000000,
         'construction_realization' => 10000000,
     ]);
-
-    $this->actingAs($staff)
-        ->put(route('pembangunan.progress.realization.update', [$property, $block, $lot]), [
-            'construction_realization' => 20000000,
-        ])
-        ->assertForbidden();
+    Budget::create([
+        'property_id' => $property->id,
+        'lot_id' => $lot->id,
+        'purpose' => 'pembangunan',
+        'name' => 'RAB Kavling',
+        'category' => 'Struktur',
+        'amount' => 100000000,
+    ]);
+    $stage = $property->constructionStages()->create([
+        'name' => 'Pondasi',
+        'order' => 1,
+        'min_progress' => 0,
+        'max_progress' => 100,
+    ]);
+    ConstructionProgress::create([
+        'lot_id' => $lot->id,
+        'stage_id' => $stage->id,
+        'progress' => 25,
+        'realization' => 10000000,
+        'updated_by' => $admin->id,
+    ]);
 
     $this->actingAs($admin)
-        ->put(route('pembangunan.progress.realization.update', [$property, $block, $lot]), [
-            'construction_realization' => 23475250,
-        ])
-        ->assertRedirect(route('pembangunan.progress.show', [$property, $block, $lot]))
-        ->assertSessionHas('success', 'Total realisasi pengeluaran berhasil diperbarui.');
-
-    $this->assertDatabaseHas('lots', [
-        'id' => $lot->id,
-        'construction_realization' => '23475250.00',
-    ]);
+        ->get(route('pembangunan.progress.show', [$property, $block, $lot]))
+        ->assertSee('Nilai Progress')
+        ->assertSee('Rp 25.000.000')
+        ->assertDontSee('name="construction_realization"', false);
 });

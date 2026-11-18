@@ -1,20 +1,16 @@
 @php
     $customerMode = old('customer_mode', 'existing');
     $paymentTermsLocked = $paymentTermsLocked ?? false;
-    $akadFeeLocked = $paymentTermsLocked && ! auth()->user()->isAdmin();
     $currentAkadFee = old('akad_fee', $booking?->akad_fee ?? 0);
+    $selectedPaymentCategory = old('payment_category', $booking?->payment_category ?? 'cash');
 @endphp
 
 <div
     x-data="{
         customerMode: @js($customerMode),
         housePrice: Number(@js($booking?->house_price_snapshot ?? $booking?->lot?->house_price ?? 0)),
-        akadFeeAmount: Number(@js($currentAkadFee)),
         formatRupiah(value) {
             return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(value || 0);
-        },
-        normalizeRupiah(value) {
-            return Number(String(value).replace(/[^\d,]/g, '').replace(',', '.')) || 0;
         }
     }"
     class="space-y-5"
@@ -128,10 +124,13 @@
             @error('booking_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
         </div>
         <div>
-            <label for="blocking-until" class="mb-2 block text-sm font-medium">Batas Booking (wajib untuk status booking)</label>
-            <input id="blocking-until" type="datetime-local" name="blocking_until" value="{{ old('blocking_until', $booking?->blocking_until?->format('Y-m-d\TH:i')) }}" class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-            <p class="mt-1 text-xs text-zinc-500">Booking aktif akan dibatalkan otomatis setelah waktu ini.</p>
-            @error('blocking_until')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            <label for="payment-category" class="mb-2 block text-sm font-medium">Cara Pembayaran</label>
+            <select id="payment-category" name="payment_category" required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
+                <option value="cash" @selected($selectedPaymentCategory === 'cash')>Cash</option>
+                <option value="kpr" @selected($selectedPaymentCategory === 'kpr')>KPR</option>
+            </select>
+            @error('payment_category')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            <p class="mt-1 text-xs text-zinc-500">Nominal dan deadline mengikuti konfigurasi Cash/KPR di menu Pembayaran.</p>
         </div>
     </div>
 
@@ -142,15 +141,20 @@
             <p>Nominal pembayaran mengikuti jadwal yang diatur admin untuk perumahan ini.</p>
         </div>
         <p class="text-sm text-zinc-600">Pembayaran booking dikelola melalui jadwal yang ditentukan admin di menu Pembayaran.</p>
-        <div class="max-w-xl">
-            <label for="akad-fee" class="mb-2 block text-sm font-medium">Biaya Akad (Rp)</label>
-            <input id="akad-fee" type="text" name="akad_fee" value="{{ $currentAkadFee }}" inputmode="decimal" data-currency-input data-currency-min="0" x-on:input="akadFeeAmount = normalizeRupiah($event.target.value)" @readonly($akadFeeLocked) required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
-            @error('akad_fee')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-        </div>
+        @if(auth()->user()->isAdmin())
+            <div class="max-w-xl">
+                <label for="akad-fee" class="mb-2 block text-sm font-medium">Biaya Akad (Rp)</label>
+                <input id="akad-fee" type="text" name="akad_fee" value="{{ $currentAkadFee }}" inputmode="decimal" data-currency-input data-currency-min="0" required class="w-full rounded-lg border border-zinc-300 px-3 py-2">
+                @error('akad_fee')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            </div>
+        @else
+            @error('akad_fee')<p role="alert" class="text-sm text-red-600">{{ $message }}</p>@enderror
+            <p class="text-sm text-amber-700">Biaya Akad ditetapkan dan dikelola oleh admin.</p>
+        @endif
     </div>
     @if(isset($paymentSummary))
         @php
-            $bookingProgress = collect($paymentSummary['stages'])->whereIn('stage', ['dp', 'booking', 'booking_balance'])->sum('remaining');
+            $bookingProgress = collect($paymentSummary['stages'])->whereIn('stage', ['booking_fee', 'dp', 'booking', 'booking_balance'])->sum('remaining');
             $akadProgress = collect($paymentSummary['stages'])->firstWhere('key', 'akad_fee');
         @endphp
         <section class="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm dark:border-blue-900 dark:bg-blue-950/30" aria-label="Ringkasan pembayaran booking">
@@ -162,18 +166,20 @@
                 <div class="h-full rounded-full bg-blue-600" style="width: {{ $paymentSummary['booking_paid_percentage'] }}%"></div>
             </div>
         </section>
-        <section class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/30" aria-label="Ringkasan pembayaran biaya akad">
-            <h3 class="font-semibold text-amber-950 dark:text-amber-100">Progres biaya akad</h3>
-            <p>Total biaya akad: Rp {{ number_format($akadProgress['due'], 0, ',', '.') }}</p>
-            <p>Sudah dibayar: Rp {{ number_format($akadProgress['paid'], 0, ',', '.') }} · {{ number_format($akadProgress['paid_percentage'], 2) }}%</p>
-            <p>Sisa biaya akad: Rp {{ number_format($akadProgress['remaining'], 0, ',', '.') }}.</p>
-            <div class="h-2 overflow-hidden rounded-full bg-amber-100 dark:bg-amber-900">
-                <div class="h-full rounded-full bg-amber-600" style="width: {{ $akadProgress['paid_percentage'] }}%"></div>
-            </div>
-        </section>
+        @if(auth()->user()->isAdmin())
+            <section class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/30" aria-label="Ringkasan pembayaran biaya akad">
+                <h3 class="font-semibold text-amber-950 dark:text-amber-100">Progres biaya akad</h3>
+                <p>Total biaya akad: Rp {{ number_format($akadProgress['due'], 0, ',', '.') }}</p>
+                <p>Sudah dibayar: Rp {{ number_format($akadProgress['paid'], 0, ',', '.') }} · {{ number_format($akadProgress['paid_percentage'], 2) }}%</p>
+                <p>Sisa biaya akad: Rp {{ number_format($akadProgress['remaining'], 0, ',', '.') }}.</p>
+                <div class="h-2 overflow-hidden rounded-full bg-amber-100 dark:bg-amber-900">
+                    <div class="h-full rounded-full bg-amber-600" style="width: {{ $akadProgress['paid_percentage'] }}%"></div>
+                </div>
+            </section>
+        @endif
     @endif
     @if($paymentTermsLocked && ! auth()->user()->isAdmin())
-        <p class="text-sm text-amber-700">Harga dan biaya akad dikunci setelah pembayaran dicatat. Total pembayaran booking dan biaya akad yang sudah dibayar tidak dapat dikurangi.</p>
+        <p class="text-sm text-amber-700">Data customer dan kavling dikunci setelah pembayaran dicatat.</p>
     @elseif(auth()->user()->isAdmin())
         <p class="text-sm text-amber-700">Sebagai admin, biaya akad tetap dapat diperbarui meskipun pembayaran sudah dicatat. Nilai baru tidak boleh lebih kecil dari biaya akad yang sudah dibayar.</p>
     @endif

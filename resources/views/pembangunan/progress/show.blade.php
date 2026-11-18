@@ -2,8 +2,8 @@
 
     @php
         $rab = $lot->budgets->sum('amount');
-        $realisasi = (float) $constructionRealizationTotal;
-        $depiasi = $rab - $realisasi;
+        $nilaiProgress = $lot->constructionProgressValue();
+        $depiasi = $rab - $nilaiProgress;
         $progressFisik = $lot->constructionProgressPercentage();
         $isAdmin = auth()->user()->isAdmin();
 
@@ -144,38 +144,12 @@
 
                     <div>
                         <p class="text-sm text-gray-500">
-                            Realisasi Pengeluaran
+                            Nilai Progress
                         </p>
 
                         <p class="mt-1 text-xl font-bold text-gray-900 dark:text-white">
-                            Rp {{ number_format($realisasi, 0, ',', '.') }}
+                            Rp {{ number_format($nilaiProgress, 0, ',', '.') }}
                         </p>
-
-                        @if($isAdmin)
-                            <form
-                                method="POST"
-                                action="{{ route('pembangunan.progress.realization.update', [$property, $block, $lot]) }}"
-                                class="mt-3 space-y-2"
-                            >
-                                @csrf
-                                @method('PUT')
-                                <input
-                                    type="text"
-                                    name="construction_realization"
-                                    value="{{ number_format($realisasi, 0, ',', '.') }}"
-                                    data-currency-input
-                                    data-currency-min="0"
-                                    required
-                                    class="block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
-                                >
-                                <button
-                                    type="submit"
-                                    style="display:block;width:100%;min-height:42px;background-color:#15803d;color:#ffffff;border:0;border-radius:8px;font-size:14px;font-weight:700;padding:10px 16px"
-                                >
-                                    Simpan
-                                </button>
-                            </form>
-                        @endif
                     </div>
 
                     <div>
@@ -195,14 +169,14 @@
         </div>
 
 
-        {{-- PROGRESS FISIK --}}
+        {{-- PERSEN PROGRESS --}}
         <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
 
             <div class="flex items-center justify-between gap-4">
 
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                        Progress Fisik
+                        Persen Progress
                     </h2>
 
                     <p class="mt-1 text-sm text-gray-500">
@@ -218,7 +192,7 @@
 
             <div
                 role="progressbar"
-                aria-label="Progress fisik"
+                aria-label="Persen progress"
                 aria-valuemin="0"
                 aria-valuemax="100"
                 aria-valuenow="{{ $progressFisik }}"

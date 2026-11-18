@@ -64,6 +64,7 @@ test('booking pages alert on expired active blocking and akad deadlines only', f
         'booking_date' => '2026-10-01',
         'blocking_until' => '2026-10-05 12:00:00',
         'status' => 'booking',
+        'created_by' => $marketingUser->id,
     ]);
     Booking::create([
         'lot_id' => $nonBlockingLot->id,
@@ -71,18 +72,21 @@ test('booking pages alert on expired active blocking and akad deadlines only', f
         'booking_date' => '2026-10-01',
         'blocking_until' => '2026-10-05 12:00:00',
         'status' => 'process',
+        'created_by' => $marketingUser->id,
     ]);
     $expiredAkadBooking = Booking::create([
         'lot_id' => $expiredAkadLot->id,
         'customer_id' => Customer::create(['name' => 'Customer Akad Terlewati'])->id,
         'booking_date' => '2026-10-01',
         'status' => 'process',
+        'created_by' => $pemberkasanUser->id,
     ]);
     $completedAkadBooking = Booking::create([
         'lot_id' => $completedAkadLot->id,
         'customer_id' => Customer::create(['name' => 'Customer Akad Selesai'])->id,
         'booking_date' => '2026-10-01',
         'status' => 'process',
+        'created_by' => $pemberkasanUser->id,
     ]);
     AkadSchedule::create([
         'booking_id' => $expiredAkadBooking->id,

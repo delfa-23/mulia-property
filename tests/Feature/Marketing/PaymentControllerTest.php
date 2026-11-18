@@ -37,6 +37,44 @@ it('saves an unpaid payment reason for a booking with payments', function () {
     ]);
 });
 
+it('keeps manual payment approvals on the dedicated admin page', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $booking = makePaymentControllerTestBooking($admin);
+    $payment = BookingPayment::create([
+        'booking_id' => $booking->id,
+        'stage' => 'dp',
+        'amount' => 1000000,
+        'paid_at' => now(),
+        'payment_channel' => 'manual',
+        'approval_status' => 'pending',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('marketing.payments.index'))
+        ->assertDontSee('Pembayaran Manual Menunggu Persetujuan')
+        ->assertDontSee(route('admin.payments.approve', $payment), false);
+
+    $this->get(route('admin.payments.approvals'))
+        ->assertSee('Persetujuan Pembayaran Manual')
+        ->assertSee('Customer Riwayat')
+        ->assertSee(route('admin.payments.approve', $payment), false);
+});
+
+it('shows unpaid reason approvals independently of manual payment approvals', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $booking = makePaymentControllerTestBooking($admin);
+    $booking->update([
+        'unpaid_payment_reason' => 'Customer menunggu pencairan dana untuk melunasi sisa pembayaran.',
+        'unpaid_payment_reason_status' => 'pending',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('marketing.payments.index'))
+        ->assertSee('Alasan Pembayaran Belum Lunas Menunggu Persetujuan')
+        ->assertSee('Setujui Alasan')
+        ->assertDontSee('Pembayaran Manual Menunggu Persetujuan');
+});
+
 it('prompts marketing to edit an expired booking after an admin approves its unpaid reason', function () {
     $marketingDivision = Division::create([
         'name' => 'Marketing',
@@ -56,6 +94,7 @@ it('prompts marketing to edit an expired booking after an admin approves its unp
     ]);
     $schedule = BookingPaymentSchedule::query()->create([
         'property_id' => $booking->lot->block->property_id,
+        'booking_id' => $booking->id,
         'title' => 'Pembayaran 1',
         'amount' => 1000000,
         'sort_order' => 1,
@@ -97,13 +136,6 @@ it('shows filtered booking payment details and a Midtrans checkout for the next 
         'lot_number' => '08',
         'house_price' => 120000000,
     ]);
-    BookingPaymentSchedule::query()->create([
-        'property_id' => $property->id,
-        'title' => 'Pembayaran 1',
-        'amount' => 100000000,
-        'sort_order' => 1,
-        'is_active' => true,
-    ]);
     $customer = Customer::create(['name' => 'Customer Pembayaran']);
     $booking = Booking::create([
         'lot_id' => $lot->id,
@@ -113,6 +145,14 @@ it('shows filtered booking payment details and a Midtrans checkout for the next 
         'house_price_snapshot' => 120000000,
         'akad_fee' => 2500000,
         'status' => 'booking',
+    ]);
+    BookingPaymentSchedule::query()->create([
+        'property_id' => $property->id,
+        'booking_id' => $booking->id,
+        'title' => 'Pembayaran 1',
+        'amount' => 100000000,
+        'sort_order' => 1,
+        'is_active' => true,
     ]);
     $otherCustomer = Customer::create(['name' => 'Customer Lain']);
     $searchFilteredLot = Lot::create([
@@ -205,13 +245,6 @@ it('shows admin-defined booking payment amounts and records manual payments at t
         'house_price' => 100000000,
     ]);
     $customer = Customer::create(['name' => 'Customer Jadwal Booking']);
-    $schedule = BookingPaymentSchedule::query()->create([
-        'property_id' => $property->id,
-        'title' => 'Pembayaran 1',
-        'amount' => 1000000,
-        'sort_order' => 1,
-        'is_active' => true,
-    ]);
     $booking = Booking::create([
         'lot_id' => $lot->id,
         'customer_id' => $customer->id,
@@ -220,6 +253,14 @@ it('shows admin-defined booking payment amounts and records manual payments at t
         'house_price_snapshot' => 100000000,
         'akad_fee' => 0,
         'status' => 'booking',
+    ]);
+    $schedule = BookingPaymentSchedule::query()->create([
+        'property_id' => $property->id,
+        'booking_id' => $booking->id,
+        'title' => 'Pembayaran 1',
+        'amount' => 1000000,
+        'sort_order' => 1,
+        'is_active' => true,
     ]);
 
     $this->actingAs($user)
@@ -276,7 +317,8 @@ it('lets admins add a booking payment schedule from the payment list', function 
         ->get(route('marketing.payments.index'))
         ->assertSee('Jadwal belum diatur admin')
         ->assertDontSee('Tambah Pembayaran')
-        ->assertDontSee($scheduleUrl, false);
+        ->assertDontSee($scheduleUrl, false)
+        ->assertDontSee(route('admin.payment-settings.index'), false);
 
     $this->actingAs($admin)
         ->get(route('marketing.payments.index'))
@@ -284,7 +326,8 @@ it('lets admins add a booking payment schedule from the payment list', function 
         ->assertSee('Tambah Pembayaran Booking')
         ->assertSee('Judul pembayaran')
         ->assertSee('Nominal (Rp)')
-        ->assertSee($scheduleUrl, false);
+        ->assertSee($scheduleUrl, false)
+        ->assertSee(route('admin.payment-settings.index'), false);
 
     $this->from(route('marketing.payments.index'))
         ->actingAs($admin)
@@ -317,6 +360,7 @@ it('marks a paid stage green and allows later stages and akad to be paid indepen
     $property = $booking->lot->block->property;
     $firstSchedule = BookingPaymentSchedule::query()->create([
         'property_id' => $property->id,
+        'booking_id' => $booking->id,
         'title' => 'Pembayaran Tiang',
         'amount' => 1000000,
         'sort_order' => 1,
@@ -324,6 +368,7 @@ it('marks a paid stage green and allows later stages and akad to be paid indepen
     ]);
     $secondSchedule = BookingPaymentSchedule::query()->create([
         'property_id' => $property->id,
+        'booking_id' => $booking->id,
         'title' => 'Pembayaran Atap',
         'amount' => 5000000,
         'sort_order' => 2,
@@ -347,7 +392,8 @@ it('marks a paid stage green and allows later stages and akad to be paid indepen
         ->assertSee('Bayar Midtrans')
         ->assertSee('Bayar Manual')
         ->assertSee('name="stage" value="booking_schedule_'.$secondSchedule->id.'"', false)
-        ->assertSee('name="stage" value="akad_fee"', false)
+        ->assertDontSee('name="stage" value="akad_fee"', false)
+        ->assertSee('Biaya Akad ditetapkan dan dikelola oleh admin.')
         ->assertDontSee('Selesaikan tahap sebelumnya');
 });
 
@@ -364,6 +410,77 @@ it('requires marketing access to view booking payments', function () {
     $this->actingAs($user)
         ->get(route('marketing.payments.index'))
         ->assertForbidden();
+});
+
+it('shows schedule edit and delete controls to admins only', function () {
+    $marketingDivision = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $marketingUser = User::factory()->create([
+        'role' => 'staff_marketing',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $marketingDivision->id,
+    ]);
+    $booking = makePaymentControllerTestBooking($marketingUser);
+    $legacySchedule = BookingPaymentSchedule::query()->create([
+        'property_id' => $booking->lot->block->property_id,
+        'title' => 'Jadwal Lama Tanpa Booking',
+        'amount' => 1000000,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+    $schedule = BookingPaymentSchedule::query()->create([
+        'property_id' => $booking->lot->block->property_id,
+        'booking_id' => $booking->id,
+        'title' => 'Jadwal Khusus Booking',
+        'amount' => 1000000,
+        'sort_order' => 2,
+        'is_active' => true,
+    ]);
+    $paidSchedule = BookingPaymentSchedule::query()->create([
+        'property_id' => $booking->lot->block->property_id,
+        'booking_id' => $booking->id,
+        'title' => 'Jadwal Sudah Lunas',
+        'amount' => 1000000,
+        'sort_order' => 3,
+        'is_active' => true,
+    ]);
+    BookingPayment::query()->create([
+        'booking_id' => $booking->id,
+        'booking_payment_schedule_id' => $paidSchedule->id,
+        'stage' => 'booking',
+        'amount' => 1000000,
+        'paid_at' => now(),
+        'payment_channel' => 'manual',
+        'approval_status' => 'approved',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('marketing.payments.index'))
+        ->assertSee('Jadwal Khusus Booking')
+        ->assertSee('Jadwal Sudah Lunas')
+        ->assertDontSee('Jadwal Lama Tanpa Booking')
+        ->assertDontSee('Semua booking di perumahan')
+        ->assertSee('Lunas')
+        ->assertSee('>Edit</summary>', false)
+        ->assertSee('>Hapus</button>', false)
+        ->assertSee(route('admin.bookings.payment-schedules.update', [$booking, $schedule]), false)
+        ->assertSee(route('admin.bookings.payment-schedules.destroy', [$booking, $schedule]), false)
+        ->assertDontSee(route('admin.bookings.payment-schedules.update', [$booking, $paidSchedule]), false)
+        ->assertDontSee(route('admin.bookings.payment-schedules.destroy', [$booking, $paidSchedule]), false);
+
+    $this->actingAs($marketingUser)
+        ->get(route('marketing.payments.index'))
+        ->assertSee('Jadwal Khusus Booking')
+        ->assertDontSee('Jadwal Lama Tanpa Booking')
+        ->assertDontSee('Edit pembayaran')
+        ->assertDontSee(route('admin.bookings.payment-schedules.update', [$booking, $schedule]), false)
+        ->assertDontSee('name="stage" value="akad_fee"', false);
 });
 
 it('shows payment transaction history only on the booking detail page', function () {

@@ -33,6 +33,7 @@ it('creates a Midtrans Snap checkout for the next booking payment stage', functi
     $booking = makeMidtransPaymentTestBooking($user);
     $schedule = BookingPaymentSchedule::query()->create([
         'property_id' => $booking->lot->block->property_id,
+        'booking_id' => $booking->id,
         'title' => 'Pembayaran 1',
         'amount' => 2500000,
         'sort_order' => 1,
@@ -64,41 +65,23 @@ it('creates a Midtrans Snap checkout for the next booking payment stage', functi
     $this->assertDatabaseCount('finance_cash_flows', 0);
 });
 
-it('creates a Midtrans checkout for the akad stage before earlier booking stages are paid', function () {
+it('does not allow marketing to create a Midtrans checkout for the akad stage', function () {
     Http::preventStrayRequests();
-    Http::fake([
-        'app.sandbox.midtrans.com/snap/v1/transactions' => Http::response([
-            'token' => 'akad-snap-token',
-            'redirect_url' => 'https://app.sandbox.midtrans.com/snap/v2/vtweb/akad-snap-token',
-        ], 201),
-    ]);
     config([
         'services.midtrans.server_key' => 'SB-Mid-server-test',
         'services.midtrans.is_production' => false,
     ]);
     $user = makeMidtransPaymentTestUser();
     $booking = makeMidtransPaymentTestBooking($user);
-    BookingPaymentSchedule::query()->create([
-        'property_id' => $booking->lot->block->property_id,
-        'title' => 'Pembayaran 1',
-        'amount' => 2500000,
-        'sort_order' => 1,
-        'is_active' => true,
-    ]);
 
     $this->actingAs($user)
         ->post(route('marketing.bookings.payments.midtrans.store', $booking), [
             'stage' => 'akad_fee',
             'amount' => 2000000,
-        ])
-        ->assertRedirect('https://app.sandbox.midtrans.com/snap/v2/vtweb/akad-snap-token');
+        ])->assertForbidden();
 
-    $this->assertDatabaseHas('booking_payment_orders', [
-        'booking_id' => $booking->id,
-        'stage' => 'akad_fee',
-        'amount' => '2000000.00',
-        'status' => 'pending',
-    ]);
+    Http::assertNothingSent();
+    $this->assertDatabaseCount('booking_payment_orders', 0);
     $this->assertDatabaseCount('booking_payments', 0);
 });
 
@@ -260,6 +243,7 @@ it('syncs a manually recorded booking payment to confirmed finance income', func
     $booking = makeMidtransPaymentTestBooking($user);
     $schedule = BookingPaymentSchedule::query()->create([
         'property_id' => $booking->lot->block->property_id,
+        'booking_id' => $booking->id,
         'title' => 'Pembayaran 1',
         'amount' => 2500000,
         'sort_order' => 1,
@@ -300,6 +284,7 @@ it('does not allow a manual payment while a Midtrans order for the stage is pend
     $booking = makeMidtransPaymentTestBooking($user);
     $schedule = BookingPaymentSchedule::query()->create([
         'property_id' => $booking->lot->block->property_id,
+        'booking_id' => $booking->id,
         'title' => 'Pembayaran 1',
         'amount' => 2500000,
         'sort_order' => 1,

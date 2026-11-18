@@ -666,18 +666,15 @@ it('keeps booking payment amounts out of the booking form', function () {
 
     $this->actingAs($user)
         ->get(route('marketing.bookings.create'))
-        ->assertSee('name="akad_fee"', false)
+        ->assertDontSee('name="akad_fee"', false)
         ->assertDontSee('name="dp_percentage"', false)
         ->assertDontSee('name="dp_paid_amount"', false)
         ->assertDontSee('name="akad_paid_amount"', false)
         ->assertSee('Pembayaran booking dikelola melalui jadwal yang ditentukan admin di menu Pembayaran.')
-        ->assertSee('data-currency-input', false)
-        ->assertSee('inputmode="decimal"', false)
-        ->assertSee('data-currency-min="0"', false)
-        ->assertDontSee('name="akad_fee" type="number"', false);
+        ->assertSee('Biaya Akad ditetapkan dan dikelola oleh admin.');
 });
 
-it('stores valid Google Maps work-location links and rejects malformed URLs', function () {
+it('prevents marketing from changing akad fees while preserving work-location updates', function () {
     $division = Division::create([
         'name' => 'Marketing',
         'slug' => 'marketing',
@@ -714,15 +711,17 @@ it('stores valid Google Maps work-location links and rejects malformed URLs', fu
         'customer_id' => $customer->id,
         'booking_date' => '2026-10-01',
         'blocking_until' => now()->addDay()->toDateTimeString(),
-        'akad_fee' => 0,
         'status' => 'booking',
     ];
 
     $this->actingAs($user)
-        ->put(route('marketing.bookings.update', $booking), [
-            ...$payload,
-            'applicant_work_location_url' => 'not-a-url',
-        ])
+        ->put(route('marketing.bookings.update', $booking), [...$payload, 'akad_fee' => 1])
+        ->assertSessionHasErrors('akad_fee');
+
+    $this->put(route('marketing.bookings.update', $booking), [
+        ...$payload,
+        'applicant_work_location_url' => 'not-a-url',
+    ])
         ->assertSessionHasErrors('applicant_work_location_url');
 
     $this->put(route('marketing.bookings.update', $booking), [
@@ -733,6 +732,7 @@ it('stores valid Google Maps work-location links and rejects malformed URLs', fu
 
     $this->assertDatabaseHas('bookings', [
         'id' => $booking->id,
+        'akad_fee' => '0.00',
         'applicant_work_location_url' => 'https://maps.google.com/?q=kantor-pemohon',
         'spouse_work_location_url' => 'https://maps.app.goo.gl/lokasi-pasangan',
     ]);
@@ -740,6 +740,22 @@ it('stores valid Google Maps work-location links and rejects malformed URLs', fu
     $this->get(route('marketing.bookings.show', $booking))
         ->assertSee('https://maps.google.com/?q=kantor-pemohon')
         ->assertSee('https://maps.app.goo.gl/lokasi-pasangan');
+});
+
+it('allows admins to set the akad fee in booking forms', function () {
+    $division = Division::create([
+        'name' => 'Marketing',
+        'slug' => 'marketing',
+        'is_active' => true,
+    ]);
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'division_id' => $division->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('marketing.bookings.create'))
+        ->assertSee('name="akad_fee"', false);
 });
 
 it('shows total booking payment progress in the booking list, edit form, and detail', function () {
@@ -820,7 +836,8 @@ it('shows total booking payment progress in the booking list, edit form, and det
         ->assertDontSee('name="dp_paid_amount"', false)
         ->assertDontSee('name="akad_paid_amount"', false)
         ->assertSee('Pembayaran booking dikelola melalui jadwal')
-        ->assertSee('Progres biaya akad');
+        ->assertSee('Biaya Akad ditetapkan dan dikelola oleh admin.')
+        ->assertDontSee('name="akad_fee"', false);
 });
 
 it('creates a booking without accepting manual payment amounts', function () {
@@ -856,20 +873,20 @@ it('creates a booking without accepting manual payment amounts', function () {
             'phone' => '081234567890',
         ],
         'booking_date' => '2026-10-12',
-        'blocking_until' => '2026-10-15',
-        'akad_fee' => 2500000,
         'status' => 'booking',
     ];
-    $missingDeadlineData = $bookingData;
-    unset($missingDeadlineData['blocking_until']);
 
     $this->actingAs($user)
-        ->post(route('marketing.bookings.store'), $missingDeadlineData)
-        ->assertSessionHasErrors('blocking_until');
+        ->get(route('marketing.bookings.create'))
+        ->assertSee('Cara Pembayaran')
+        ->assertSee('Cash')
+        ->assertSee('KPR');
     $this->post(route('marketing.bookings.store'), [...$bookingData, 'dp_paid_amount' => 25000000])
         ->assertSessionHasErrors('dp_paid_amount');
     $this->post(route('marketing.bookings.store'), [...$bookingData, 'akad_paid_amount' => 1])
         ->assertSessionHasErrors('akad_paid_amount');
+    $this->post(route('marketing.bookings.store'), [...$bookingData, 'akad_fee' => 2500000])
+        ->assertSessionHasErrors('akad_fee');
     $this->assertDatabaseCount('bookings', 0);
 
     $this->post(route('marketing.bookings.store'), $bookingData)
@@ -884,9 +901,12 @@ it('creates a booking without accepting manual payment amounts', function () {
         'lot_id' => $lot->id,
         'house_price_snapshot' => '500000000.00',
         'dp_percentage' => '100.00',
-        'akad_fee' => '2500000.00',
+        'akad_fee' => '0.00',
         'status' => 'booking',
     ]);
+    expect($booking->payment_category)->toBe('cash')
+        ->and($booking->blocking_until->toDateTimeString())->toBe('2026-10-12 22:00:00')
+        ->and($booking->dp_deadline_at->toDateTimeString())->toBe('2026-10-24 10:00:00');
     $this->assertDatabaseHas('lots', ['id' => $lot->id, 'status' => 'booked']);
     $this->assertDatabaseHas('booking_histories', [
         'booking_id' => $booking->id,
@@ -896,7 +916,7 @@ it('creates a booking without accepting manual payment amounts', function () {
     $this->assertDatabaseMissing('booking_payments', ['booking_id' => $booking->id]);
 });
 
-it('allows configured booking and akad payments in any order at their fixed amounts', function () {
+it('allows marketing to record booking stages but not akad payments', function () {
     $this->travelTo(Carbon::parse('2026-10-12 10:00:00'));
     Storage::fake('public');
     $division = Division::create([
@@ -919,20 +939,6 @@ it('allows configured booking and akad payments in any order at their fixed amou
         'house_price' => 100000000,
         'status' => 'booked',
     ]);
-    $firstSchedule = BookingPaymentSchedule::create([
-        'property_id' => $property->id,
-        'title' => 'Pembayaran 1',
-        'amount' => 10000000,
-        'sort_order' => 1,
-        'is_active' => true,
-    ]);
-    $secondSchedule = BookingPaymentSchedule::create([
-        'property_id' => $property->id,
-        'title' => 'Pembayaran 2',
-        'amount' => 85000000,
-        'sort_order' => 2,
-        'is_active' => true,
-    ]);
     $customer = Customer::create(['name' => 'Pembeli Pembayaran']);
     $booking = Booking::create([
         'lot_id' => $lot->id,
@@ -943,6 +949,22 @@ it('allows configured booking and akad payments in any order at their fixed amou
         'dp_percentage' => 20,
         'akad_fee' => 2000000,
         'status' => 'booking',
+    ]);
+    $firstSchedule = BookingPaymentSchedule::create([
+        'property_id' => $property->id,
+        'booking_id' => $booking->id,
+        'title' => 'Pembayaran 1',
+        'amount' => 10000000,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+    $secondSchedule = BookingPaymentSchedule::create([
+        'property_id' => $property->id,
+        'booking_id' => $booking->id,
+        'title' => 'Pembayaran 2',
+        'amount' => 85000000,
+        'sort_order' => 2,
+        'is_active' => true,
     ]);
     $paymentRoute = route('marketing.bookings.payments.store', $booking);
     $paymentData = [
@@ -966,9 +988,7 @@ it('allows configured booking and akad payments in any order at their fixed amou
         'stage' => 'akad_fee',
         'amount' => 2000000,
         'proof' => UploadedFile::fake()->image('bukti.jpg'),
-    ])
-        ->assertRedirect(route('marketing.bookings.show', $booking))
-        ->assertSessionHasNoErrors();
+    ])->assertForbidden();
     $this->post($paymentRoute, [
         ...$paymentData,
         'stage' => 'booking_schedule_'.$firstSchedule->id,
@@ -999,8 +1019,6 @@ it('allows configured booking and akad payments in any order at their fixed amou
         'customer_id' => $otherCustomer->id,
         'booking_date' => '2026-10-01',
         'blocking_until' => '2026-12-20 10:00:00',
-        'dp_percentage' => 20,
-        'akad_fee' => 2000000,
         'status' => 'booking',
     ])->assertSessionHasErrors('customer_id');
 
@@ -1025,10 +1043,9 @@ it('allows configured booking and akad payments in any order at their fixed amou
         'stage' => 'booking',
         'amount' => '10000000.00',
     ]);
-    $this->assertDatabaseHas('booking_payments', [
+    $this->assertDatabaseMissing('booking_payments', [
         'booking_id' => $booking->id,
         'stage' => 'akad_fee',
-        'amount' => '2000000.00',
     ]);
     $this->get(route('marketing.bookings.show', $booking))
         ->assertSee('Pembayaran 1')

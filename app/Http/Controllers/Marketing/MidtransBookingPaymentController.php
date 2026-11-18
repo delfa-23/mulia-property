@@ -19,6 +19,7 @@ class MidtransBookingPaymentController extends Controller
         MarketingLeadAccess $leadAccess,
     ): RedirectResponse {
         $leadAccess->authorizeBooking($request->user(), $booking);
+        abort_unless($request->user()->isAdmin() || $request->input('stage') !== 'akad_fee', 403);
 
         if ($request->input('stage') === 'akad_fee' && $request->filled('amount')) {
             $request->merge([

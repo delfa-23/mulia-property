@@ -20,19 +20,22 @@ use Illuminate\View\View;
 
 class FinanceCashPositionController extends Controller
 {
+    private const LAST_FORECAST_MONTH = '2027-12';
+
     public function index(Request $request, BookingPaymentSummaryService $paymentSummaryService): View
     {
         $this->authorizeFinance($request);
 
         $today = today();
         $currentMonth = $today->format('Y-m');
+        $forecastMonthOptions = $this->forecastMonthOptions($today);
         $historyMonthOptions = FinanceCashFlow::query()
             ->select('due_date')
+            ->whereDate('due_date', '<', $today->copy()->startOfMonth()->toDateString())
             ->distinct()
             ->orderBy('due_date')
             ->pluck('due_date')
             ->map(fn ($dueDate): string => Carbon::parse($dueDate)->format('Y-m'))
-            ->push($currentMonth)
             ->unique()
             ->sortDesc()
             ->values();
@@ -40,14 +43,19 @@ class FinanceCashPositionController extends Controller
             $month => Carbon::createFromFormat('!Y-m', $month)->locale('id')->translatedFormat('F Y'),
         ]);
         $validated = $request->validate([
+            'forecast_month' => ['nullable', 'date_format:Y-m', Rule::in(array_keys($forecastMonthOptions))],
             'history_month' => ['nullable', 'date_format:Y-m', Rule::in($historyMonthOptions->all())],
             'site_plan_property_id' => ['nullable', 'integer', 'exists:properties,id'],
         ]);
-        $selectedHistoryMonth = $validated['history_month'] ?? $currentMonth;
-        $historyStart = Carbon::createFromFormat('!Y-m', $selectedHistoryMonth)->startOfMonth();
-        $historyEnd = $historyStart->copy()->endOfMonth();
-        $historyIsArchived = $historyStart->lt($today->copy()->startOfMonth());
-        $historyIsFuture = $historyStart->gt($today->copy()->startOfMonth());
+        $selectedForecastMonth = $validated['forecast_month'] ?? $currentMonth;
+        $forecastMonthStart = Carbon::createFromFormat('!Y-m', $selectedForecastMonth)->startOfMonth();
+        $forecastMonthEnd = $forecastMonthStart->copy()->endOfMonth();
+        $selectedHistoryMonth = $validated['history_month'] ?? $historyMonthOptions->first();
+        $historyStart = $selectedHistoryMonth !== null
+            ? Carbon::createFromFormat('!Y-m', $selectedHistoryMonth)->startOfMonth()
+            : null;
+        $historyEnd = $historyStart?->copy()->endOfMonth();
+        $historyIsArchived = $historyStart?->lt($today->copy()->startOfMonth()) ?? false;
         $properties = Property::query()->orderBy('name')->get(['id', 'name', 'site_plan_path']);
         $sitePlanPropertyId = isset($validated['site_plan_property_id'])
             ? (int) $validated['site_plan_property_id']
@@ -79,7 +87,13 @@ class FinanceCashPositionController extends Controller
                 ->get()
             : collect();
         $historyQuery = FinanceCashFlow::query()
-            ->whereBetween('due_date', [$historyStart->toDateString(), $historyEnd->toDateString()]);
+            ->when(
+                $historyStart !== null && $historyEnd !== null,
+                fn ($query) => $query
+                    ->whereDate('due_date', '>=', $historyStart->toDateString())
+                    ->whereDate('due_date', '<=', $historyEnd->toDateString()),
+                fn ($query) => $query->whereRaw('1 = 0'),
+            );
         $historySummary = (clone $historyQuery)
             ->selectRaw("
                 COALESCE(SUM(CASE WHEN direction = 'income' THEN amount ELSE 0 END), 0) as income_total,
@@ -93,31 +107,26 @@ class FinanceCashPositionController extends Controller
             ->paginate(15, ['*'], 'history_page')
             ->withQueryString();
         $weekOptions = collect(range(1, 4))
-            ->mapWithKeys(function (int $weekNumber) use ($today): array {
-                $start = $today->copy()->startOfWeek(Carbon::MONDAY)->addWeeks($weekNumber - 1);
-                $end = $start->copy()->endOfWeek(Carbon::SUNDAY);
+            ->mapWithKeys(function (int $weekNumber) use ($forecastMonthStart, $forecastMonthEnd): array {
+                $start = $forecastMonthStart->copy()->addDays(($weekNumber - 1) * 7);
+                $end = $weekNumber === 4 ? $forecastMonthEnd->copy() : $start->copy()->addDays(6);
 
                 return [$weekNumber => [
                     'label' => $start->format('d/m').' – '.$end->format('d/m/Y'),
                     'start' => $start->toDateString(),
                     'end' => $end->toDateString(),
-                    'min' => $weekNumber === 1 && $today->gt($start) ? $today->toDateString() : $start->toDateString(),
                 ]];
             });
-        $weekDateBounds = $weekOptions->map(fn (array $week): array => [
-            'min' => $week['min'],
-            'max' => $week['end'],
-        ]);
-        $endDate = $weekOptions->last()['end'];
         $cashFlowPlans = FinanceCashFlow::query()
             ->with(['property', 'createdBy'])
-            ->whereBetween('due_date', [$today->toDateString(), $endDate])
+            ->whereDate('due_date', '>=', $forecastMonthStart->toDateString())
+            ->whereDate('due_date', '<=', $forecastMonthEnd->toDateString())
             ->orderBy('due_date')
             ->orderBy('id')
             ->get();
         $cashFlowForecasts = $weekOptions->mapWithKeys(function (array $week, int $weekNumber) use ($cashFlowPlans): array {
             $plansInWeek = $cashFlowPlans->filter(
-                fn (FinanceCashFlow $plan): bool => $plan->due_date->between($week['min'], $week['end']),
+                fn (FinanceCashFlow $plan): bool => $plan->due_date->between($week['start'], $week['end']),
             );
             $totals = [];
 
@@ -139,7 +148,10 @@ class FinanceCashPositionController extends Controller
         $bookingPayments = BookingPayment::query()
             ->where('approval_status', 'approved')
             ->with(['booking.customer', 'booking.lot.block.property'])
-            ->whereBetween('paid_at', [$historyStart->copy()->startOfDay(), $historyEnd->copy()->endOfDay()])
+            ->whereBetween('paid_at', [
+                ($historyStart ?? $forecastMonthStart)->copy()->startOfDay(),
+                ($historyEnd ?? $forecastMonthEnd)->copy()->endOfDay(),
+            ])
             ->orderByDesc('paid_at')
             ->get();
         $bookingPaymentReport = $bookingPayments->map(function (BookingPayment $payment) use ($paymentSummaryService): array {
@@ -164,7 +176,6 @@ class FinanceCashPositionController extends Controller
             'cashFlowForecasts' => $cashFlowForecasts,
             'cashFlowHistory' => $cashFlowHistory,
             'historyIsArchived' => $historyIsArchived,
-            'historyIsFuture' => $historyIsFuture,
             'historyMonthLabels' => $historyMonthLabels,
             'historySummary' => $historySummary,
             'properties' => $properties,
@@ -173,9 +184,13 @@ class FinanceCashPositionController extends Controller
             'sitePlanLots' => $sitePlanLots,
             'sitePlanAreas' => $sitePlanAreas,
             'selectedHistoryMonth' => $selectedHistoryMonth,
+            'forecastMonthOptions' => $forecastMonthOptions,
+            'selectedForecastMonth' => $selectedForecastMonth,
             'weekOptions' => $weekOptions,
-            'weekDateBounds' => $weekDateBounds,
-            'selectedWeek' => (string) old('week_number', 1),
+            'today' => $today,
+            'forecastMonthStart' => $forecastMonthStart,
+            'forecastMonthEnd' => $forecastMonthEnd,
+            'forecastMonthLabel' => $forecastMonthStart->copy()->locale('id')->translatedFormat('F Y'),
             'bookingPaymentReport' => $bookingPaymentReport,
         ]);
     }
@@ -250,46 +265,79 @@ class FinanceCashPositionController extends Controller
     {
         $this->authorizeFinance($request);
 
+        $today = today();
+        $forecastMonthOptions = $this->forecastMonthOptions($today);
         $validated = $request->validate([
+            'forecast_month' => ['required', 'date_format:Y-m', Rule::in(array_keys($forecastMonthOptions))],
             'property_id' => ['nullable', 'integer', 'exists:properties,id'],
             'title' => ['required', 'string', 'max:150'],
             'direction' => ['required', Rule::in(['income', 'outcome'])],
             'status' => ['required', Rule::in(['confirmed', 'potential', 'forecast'])],
-            'week_number' => ['required', 'integer', 'between:1,4'],
-            'due_date' => ['required', 'date'],
+            'due_date' => [
+                'required',
+                'date_format:Y-m-d',
+                'after_or_equal:'.$today->toDateString(),
+                'before_or_equal:'.self::LAST_FORECAST_MONTH.'-31',
+            ],
             'amount' => ['required', 'numeric', 'gt:0', 'max:9999999999999.99'],
+        ], [
+            'due_date.after_or_equal' => 'Tanggal jatuh tempo tidak boleh sebelum hari ini.',
+            'due_date.before_or_equal' => 'Tanggal jatuh tempo tidak boleh setelah Desember 2027.',
         ]);
 
-        $weekStart = today()->startOfWeek(Carbon::MONDAY)->addWeeks((int) $validated['week_number'] - 1);
-        $weekEnd = $weekStart->copy()->endOfWeek(Carbon::SUNDAY);
-        $minimumDate = (int) $validated['week_number'] === 1 && today()->gt($weekStart)
-            ? today()
-            : $weekStart;
-        $dueDate = Carbon::parse($validated['due_date'])->startOfDay();
+        $selectedForecastMonth = $validated['forecast_month'];
+        $forecastMonthStart = Carbon::createFromFormat('!Y-m', $selectedForecastMonth)->startOfMonth();
+        $forecastMonthEnd = $forecastMonthStart->copy()->endOfMonth();
+        $minimumDueDate = $selectedForecastMonth === $today->format('Y-m')
+            ? $today
+            : $forecastMonthStart;
+        $dueDate = Carbon::createFromFormat('!Y-m-d', $validated['due_date']);
 
-        if ($dueDate->lt($minimumDate) || $dueDate->gt($weekEnd)) {
+        if ($dueDate->lt($minimumDueDate) || $dueDate->gt($forecastMonthEnd)) {
             throw ValidationException::withMessages([
-                'due_date' => 'Tanggal rencana harus berada pada minggu yang dipilih dan tidak boleh sudah lewat.',
+                'due_date' => 'Tanggal jatuh tempo harus berada pada bulan yang dipilih dan tidak boleh sudah lewat.',
             ]);
         }
 
-        unset($validated['week_number']);
+        unset($validated['forecast_month']);
         FinanceCashFlow::query()->create([
             ...$validated,
             'created_by' => $request->user()->id,
         ]);
 
-        return to_route('keuangan.cash-position.index')->with('success', 'Rencana pemasukan/pengeluaran berhasil ditambahkan.');
+        return to_route('keuangan.cash-position.index', [
+            'forecast_month' => $selectedForecastMonth,
+        ])->with('success', 'Rencana pemasukan/pengeluaran berhasil ditambahkan.');
     }
 
     public function destroyCashFlow(Request $request, FinanceCashFlow $cashFlow): RedirectResponse
     {
         $this->authorizeFinance($request);
-        $historyMonth = $cashFlow->due_date->format('Y-m');
+        $dueMonth = $cashFlow->due_date->format('Y-m');
         $cashFlow->delete();
 
-        return to_route('keuangan.cash-position.index', ['history_month' => $historyMonth])
+        $period = $cashFlow->due_date->lt(today()->startOfMonth())
+            ? ['history_month' => $dueMonth]
+            : ['forecast_month' => $dueMonth];
+
+        return to_route('keuangan.cash-position.index', $period)
             ->with('success', 'Rencana arus kas berhasil dihapus.');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function forecastMonthOptions(\DateTimeInterface $today): array
+    {
+        $month = Carbon::createFromFormat('!Y-m', $today->format('Y-m'));
+        $lastMonth = Carbon::createFromFormat('!Y-m', self::LAST_FORECAST_MONTH)->startOfMonth();
+        $options = [];
+
+        for (; $month->lte($lastMonth); $month->addMonth()) {
+            $options[$month->format('Y-m')] = $month->copy()->locale('id')->translatedFormat('F Y');
+        }
+
+        return $options;
     }
 
     private function authorizeFinance(Request $request): void

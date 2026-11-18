@@ -136,11 +136,11 @@
                             </th>
 
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                Progress Fisik
+                                Persen Progress
                             </th>
 
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                Realisasi
+                                Nilai Progress
                             </th>
 
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -180,9 +180,9 @@
                                 @php
                                     $rab = $lot->budgets->sum('amount');
 
-                                    $realisasi = (float) ($lot->construction_realization ?? 0);
+                                    $nilaiProgress = $lot->constructionProgressValue();
 
-                                    $depiasi = $rab - $realisasi;
+                                    $depiasi = $rab - $nilaiProgress;
 
                                     $progressFisik = $lot->constructionProgressPercentage();
                                 @endphp
@@ -211,7 +211,7 @@
                                 </td>
 
                                 <td class="px-5 py-4 text-sm text-gray-700 dark:text-zinc-300">
-                                    Rp {{ number_format($realisasi, 0, ',', '.') }}
+                                    Rp {{ number_format($nilaiProgress, 0, ',', '.') }}
                                 </td>
 
                                 <td class="px-5 py-4 text-sm font-medium

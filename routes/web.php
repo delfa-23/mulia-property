@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\AlertController;
 use App\Http\Controllers\Admin\BlockController;
 use App\Http\Controllers\Admin\BookingPaymentScheduleController;
+use App\Http\Controllers\Admin\BookingPaymentSettingController;
 use App\Http\Controllers\Admin\BudgetController as AdminBudgetController;
 use App\Http\Controllers\Admin\CommonFacilityController;
 use App\Http\Controllers\Admin\ConstructionStageController;
@@ -141,6 +142,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/site-plans', [SitePlanBrowserController::class, 'index'])->name('site-plans.index');
         Route::get('/payment-approvals', [MarketingBookingController::class, 'paymentApprovals'])
             ->name('payments.approvals');
+        Route::get('/payment-settings', [BookingPaymentSettingController::class, 'index'])
+            ->name('payment-settings.index');
+        Route::put('/payment-settings/{paymentCategory}', [BookingPaymentSettingController::class, 'update'])
+            ->name('payment-settings.update');
         Route::post('/payment-approvals/{payment}/approve', [MarketingBookingController::class, 'approvePayment'])
             ->name('payments.approve');
         Route::post('/payment-approvals/{payment}/reject', [MarketingBookingController::class, 'rejectPayment'])
@@ -157,10 +162,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->name('properties.payment-schedules.index');
         Route::post('/properties/{property}/payment-schedules', [BookingPaymentScheduleController::class, 'store'])
             ->name('properties.payment-schedules.store');
-        Route::put('/properties/{property}/payment-schedules/{bookingPaymentSchedule}', [BookingPaymentScheduleController::class, 'update'])
-            ->name('properties.payment-schedules.update');
-        Route::delete('/properties/{property}/payment-schedules/{bookingPaymentSchedule}', [BookingPaymentScheduleController::class, 'destroy'])
-            ->name('properties.payment-schedules.destroy');
+        Route::put('/properties/{property}/payment-schedules/{bookingPaymentSchedule}/assign', [BookingPaymentScheduleController::class, 'assignToBooking'])
+            ->name('properties.payment-schedules.assign');
+        Route::put('/bookings/{booking}/payment-schedules/{bookingPaymentSchedule}', [BookingPaymentScheduleController::class, 'updateForBooking'])
+            ->scopeBindings()
+            ->name('bookings.payment-schedules.update');
+        Route::delete('/bookings/{booking}/payment-schedules/{bookingPaymentSchedule}', [BookingPaymentScheduleController::class, 'destroyForBooking'])
+            ->scopeBindings()
+            ->name('bookings.payment-schedules.destroy');
         Route::post('/properties/{property}/site-plan-areas', [SitePlanAreaController::class, 'store'])
             ->name('properties.site-plan-areas.store');
         Route::put('/properties/{property}/site-plan-areas/{sitePlanArea}', [SitePlanAreaController::class, 'update'])
@@ -213,6 +222,8 @@ Route::prefix('pembangunan')
     ->group(function () {
         Route::get('/dashboard', [PembangunanDashboardController::class, 'index'])
             ->name('dashboard');
+        Route::put('/dashboard/current-expense', [PembangunanDashboardController::class, 'updateCurrentExpense'])
+            ->name('dashboard.current-expense.update');
 
         Route::get('/properties', [PropertyOverviewController::class, 'index'])
             ->name('properties.index');
@@ -252,10 +263,6 @@ Route::prefix('pembangunan')
             '/properties/{property}/blocks/{block}/lots/{lot}/progress/{constructionProgress}',
             [ProgressController::class, 'update']
         )->name('progress.records.update');
-        Route::put(
-            '/properties/{property}/blocks/{block}/lots/{lot}/progress-realization',
-            [ProgressController::class, 'updateRealization']
-        )->name('progress.realization.update');
 
         Route::delete(
             '/properties/{property}/blocks/{block}/lots/{lot}/progress/{constructionProgress}',

@@ -41,13 +41,19 @@ class MidtransPaymentService
                 ]);
             }
 
-            if ($lockedBooking->status === 'booking' && $lockedBooking->blocking_until?->isPast()) {
+            $summary = $this->paymentSummaryService->summarize($lockedBooking);
+            $bookingFeeStage = collect($summary['stages'])->firstWhere('stage', 'booking_fee');
+
+            if (
+                $lockedBooking->status === 'booking' &&
+                $lockedBooking->blocking_until?->isPast() &&
+                ($lockedBooking->payment_category === null || ($bookingFeeStage !== null && $bookingFeeStage['remaining'] > 0.009))
+            ) {
                 throw ValidationException::withMessages([
-                    'stage' => 'Batas booking sudah terlewati. Perbarui status booking sebelum membuat pembayaran.',
+                    'stage' => 'Deadline Booking Fee sudah terlewati. Booking tidak dapat menerima pembayaran baru.',
                 ]);
             }
 
-            $summary = $this->paymentSummaryService->summarize($lockedBooking);
             $paymentStage = collect($summary['stages'])
                 ->first(fn (array $paymentStage): bool => $paymentStage['key'] === $stageKey);
 
@@ -139,7 +145,9 @@ class MidtransPaymentService
             : 'https://app.sandbox.midtrans.com';
         $order->loadMissing(['booking.customer', 'paymentSchedule']);
         $stageLabel = $order->paymentSchedule?->title ?? match ($order->stage) {
-            'dp', 'booking' => 'Pembayaran Booking',
+            'booking_fee' => 'Booking Fee',
+            'dp' => 'Down Payment (DP)',
+            'booking' => 'Pembayaran Booking',
             'booking_balance' => 'Sisa Pembayaran Booking',
             'akad_fee' => 'Biaya Akad',
             default => 'Pembayaran Booking',
