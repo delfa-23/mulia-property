@@ -44,7 +44,7 @@
 
         @if($selectedProperty && $selectedProperty->site_plan_path)
             <div class="flex flex-wrap justify-end gap-2">
-                <a href="{{ route('admin.properties.site-plan-export', $selectedProperty) }}" class="rounded-lg bg-[#174A35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#103b2a]">
+                <a href="{{ route('admin.properties.site-plan-export', $selectedProperty) }}" class="site-plan-export-button rounded-lg px-4 py-2 text-sm font-semibold">
                     Export Siteplan
                 </a>
             </div>
