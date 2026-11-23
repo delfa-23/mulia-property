@@ -152,8 +152,7 @@ test('staff can create progress reports for their own division', function (strin
 
     $this->actingAs($user)
         ->post(route('reports.progress.store'), [
-            'period_start' => '2026-09-01',
-            'period_end' => '2026-09-07',
+            'report_date' => '2026-09-01',
             'title' => 'Laporan Mingguan',
             'content' => 'Perkembangan divisi.',
             'progress' => 50,
@@ -199,6 +198,7 @@ test('marketing and pemberkasan staff see a submit action for their draft report
     $report = ProgressReport::create([
         'division_id' => $division->id,
         'created_by' => $user->id,
+        'report_date' => '2026-09-01',
         'period_start' => '2026-09-01',
         'period_end' => '2026-09-07',
         'title' => 'Laporan Mingguan',
@@ -223,6 +223,7 @@ test('marketing and pemberkasan staff can submit draft reports to their team lea
     $report = ProgressReport::create([
         'division_id' => $division->id,
         'created_by' => $user->id,
+        'report_date' => '2026-09-01',
         'period_start' => '2026-09-01',
         'period_end' => '2026-09-07',
         'title' => 'Laporan Mingguan',
@@ -252,8 +253,7 @@ test('staff with a conflicting division cannot create a progress report', functi
 
     $this->actingAs($user)
         ->post(route('reports.progress.store'), [
-            'period_start' => '2026-09-01',
-            'period_end' => '2026-09-07',
+            'report_date' => '2026-09-01',
             'title' => 'Laporan Pembangunan',
             'content' => 'Perkembangan pekerjaan lapangan.',
             'progress' => 50,
@@ -276,6 +276,7 @@ test('team leads cannot review reports outside their division', function (string
     $report = ProgressReport::create([
         'division_id' => $otherDivision->id,
         'created_by' => $teamLead->id,
+        'report_date' => '2026-09-01',
         'period_start' => '2026-09-01',
         'period_end' => '2026-09-07',
         'title' => 'Laporan Marketing',
@@ -301,6 +302,7 @@ test('team leads can see review actions for submitted reports in their division'
     $report = ProgressReport::create([
         'division_id' => $division->id,
         'created_by' => $teamLead->id,
+        'report_date' => '2026-09-01',
         'period_start' => '2026-09-01',
         'period_end' => '2026-09-07',
         'title' => 'Laporan Pembangunan',
@@ -326,6 +328,7 @@ test('team leads can approve submitted reports from their own division', functio
     $report = ProgressReport::create([
         'division_id' => $division->id,
         'created_by' => $teamLead->id,
+        'report_date' => '2026-09-01',
         'period_start' => '2026-09-01',
         'period_end' => '2026-09-07',
         'title' => 'Laporan Mingguan',

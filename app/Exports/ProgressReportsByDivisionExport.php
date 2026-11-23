@@ -33,26 +33,21 @@ class ProgressReportsByDivisionExport extends DefaultValueBinder implements From
             ->with(['progressReports' => fn ($query) => $query
                 ->where('status', 'approved')
                 ->with(['creator', 'reviews.reviewer'])
-                ->orderByDesc('period_start')
+                ->orderByDesc('report_date')
                 ->orderByDesc('created_at')])
             ->orderBy('name')
             ->get()
             ->flatMap(function (Division $division) use ($statusLabels, $reviewLabels): Collection {
                 $reports = $division->progressReports;
-                $progressValues = $reports->pluck('progress')->filter(fn ($progress) => $progress !== null);
-                $averageProgress = $progressValues->isNotEmpty()
-                    ? round((float) $progressValues->avg(), 2)
-                    : null;
                 $divisionData = [
                     $division->name,
                     $division->is_active ? 'Aktif' : 'Nonaktif',
                     $division->description ?: '-',
                     $reports->count(),
-                    $averageProgress,
                 ];
 
                 if ($reports->isEmpty()) {
-                    return collect([array_merge($divisionData, array_fill(0, 11, null))]);
+                    return collect([array_merge($divisionData, array_fill(0, 9, null))]);
                 }
 
                 return $reports->map(function ($report) use ($divisionData, $statusLabels, $reviewLabels): array {
@@ -64,11 +59,9 @@ class ProgressReportsByDivisionExport extends DefaultValueBinder implements From
 
                     return array_merge($divisionData, [
                         $report->title,
-                        $report->period_start->format('d/m/Y'),
-                        $report->period_end->format('d/m/Y'),
+                        $report->report_date->format('d/m/Y'),
                         $report->content ?: '(Belum ada rincian)',
                         $report->creator?->name ?? '-',
-                        $report->progress !== null ? (float) $report->progress : null,
                         $statusLabels[$report->status] ?? ucfirst($report->status),
                         $report->created_at?->format('d/m/Y H:i') ?? '-',
                         $report->submitted_at?->format('d/m/Y H:i') ?? '-',
@@ -87,13 +80,10 @@ class ProgressReportsByDivisionExport extends DefaultValueBinder implements From
             'Status Divisi',
             'Keterangan Divisi',
             'Jumlah Laporan',
-            'Rata-rata Progress (%)',
             'Judul Laporan',
-            'Periode Mulai',
-            'Periode Selesai',
-            'Rincian Progress',
+            'Tanggal Laporan',
+            'Isi Laporan',
             'Pembuat',
-            'Progress (%)',
             'Status Laporan',
             'Dibuat Pada',
             'Dikirim Pada',
@@ -104,10 +94,10 @@ class ProgressReportsByDivisionExport extends DefaultValueBinder implements From
 
     public function styles(Worksheet $sheet): array
     {
-        $sheet->getStyle('A1:P1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:M1')->getFont()->setBold(true);
         $sheet->getStyle('C:C')->getAlignment()->setWrapText(true);
-        $sheet->getStyle('I:I')->getAlignment()->setWrapText(true);
-        $sheet->getStyle('P:P')->getAlignment()->setWrapText(true);
+        $sheet->getStyle('G:G')->getAlignment()->setWrapText(true);
+        $sheet->getStyle('M:M')->getAlignment()->setWrapText(true);
 
         return [];
     }

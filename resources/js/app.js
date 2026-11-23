@@ -196,6 +196,133 @@ const initializeLotFilters = () => {
 	document.querySelectorAll('form').forEach((form) => initializeBudgetTargetSelectors(form));
 };
 
+const initializeConstructionPhotoCapture = () => {
+	document.querySelectorAll('[data-camera-photo-form]:not([data-camera-initialized])').forEach((form) => {
+		form.dataset.cameraInitialized = 'true';
+
+		const video = form.querySelector('[data-camera-preview]');
+		const canvas = form.querySelector('[data-camera-canvas]');
+		const photoInput = form.querySelector('[data-camera-photo]');
+		const capturedImage = form.querySelector('[data-camera-captured-image]');
+		const startButton = form.querySelector('[data-camera-start]');
+		const captureButton = form.querySelector('[data-camera-capture]');
+		const retakeButton = form.querySelector('[data-camera-retake]');
+		const errorMessage = form.querySelector('[data-camera-error]');
+		const requiredMessage = form.querySelector('[data-camera-required-message]');
+		let cameraStream = null;
+		let previewUrl = null;
+
+		const stopCamera = () => {
+			cameraStream?.getTracks().forEach((track) => track.stop());
+			cameraStream = null;
+
+			if (video) {
+				video.srcObject = null;
+			}
+		};
+		const releaseCameraResources = () => {
+			stopCamera();
+			if (previewUrl) {
+				URL.revokeObjectURL(previewUrl);
+				previewUrl = null;
+			}
+		};
+
+		const showError = (message) => {
+			if (!errorMessage) {
+				return;
+			}
+
+			errorMessage.textContent = message;
+			errorMessage.hidden = false;
+		};
+
+		startButton?.addEventListener('click', async () => {
+			errorMessage.hidden = true;
+
+			if (!navigator.mediaDevices?.getUserMedia) {
+				showError('Kamera tidak tersedia. Buka halaman melalui HTTPS dan gunakan perangkat dengan kamera.');
+				return;
+			}
+
+			try {
+				cameraStream = await navigator.mediaDevices.getUserMedia({
+					audio: false,
+					video: { facingMode: { ideal: 'environment' } },
+				});
+				video.srcObject = cameraStream;
+				await video.play();
+				video.hidden = false;
+				startButton.hidden = true;
+				captureButton.hidden = false;
+				captureButton.disabled = false;
+			} catch (error) {
+				stopCamera();
+				console.error('Failed to access the construction report camera:', error);
+				showError('Kamera tidak dapat dibuka. Izinkan akses kamera di browser lalu coba lagi.');
+			}
+		});
+
+		captureButton?.addEventListener('click', () => {
+			if (!video?.videoWidth || !canvas || !photoInput) {
+				showError('Kamera belum siap. Tunggu hingga pratinjau muncul.');
+				return;
+			}
+
+			const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+			canvas.width = Math.round(video.videoWidth * scale);
+			canvas.height = Math.round(video.videoHeight * scale);
+			const context = canvas.getContext('2d');
+			if (!context) {
+				showError('Foto gagal diproses. Silakan muat ulang halaman dan coba lagi.');
+				return;
+			}
+			context.drawImage(video, 0, 0, canvas.width, canvas.height);
+			canvas.toBlob((blob) => {
+				if (!blob) {
+					showError('Foto gagal diproses. Silakan ambil ulang.');
+					return;
+				}
+
+				const file = new File([blob], `progress-${Date.now()}.jpg`, { type: 'image/jpeg' });
+				const transfer = new DataTransfer();
+				transfer.items.add(file);
+				photoInput.files = transfer.files;
+
+				if (previewUrl) {
+					URL.revokeObjectURL(previewUrl);
+				}
+				previewUrl = URL.createObjectURL(blob);
+				capturedImage.src = previewUrl;
+				capturedImage.hidden = false;
+				video.hidden = true;
+				captureButton.hidden = true;
+				retakeButton.hidden = false;
+				requiredMessage.hidden = true;
+				stopCamera();
+			}, 'image/jpeg', 0.88);
+		});
+
+		retakeButton?.addEventListener('click', () => {
+			photoInput.value = '';
+			capturedImage.hidden = true;
+			retakeButton.hidden = true;
+			startButton.hidden = false;
+			startButton.click();
+		});
+
+		form.addEventListener('submit', (event) => {
+			if (form.dataset.photoRequired === 'true' && !photoInput?.files?.length) {
+				event.preventDefault();
+				requiredMessage.hidden = false;
+				startButton?.focus();
+			}
+		});
+
+		document.addEventListener('livewire:navigating', releaseCameraResources, { once: true });
+	});
+};
+
 const initializeWorkflowBookingModals = () => {
 	document.querySelectorAll('[data-workflow-bookings-modal]:not([data-workflow-bookings-modal-initialized])').forEach((modal) => {
 		modal.dataset.workflowBookingsModalInitialized = 'true';
@@ -231,6 +358,8 @@ const initializeSitePlanViewers = () => {
 		const notesSection = viewer.querySelector('[data-site-plan-notes-section]');
 		const lotImages = viewer.querySelector('[data-site-plan-lot-images]');
 		const lotImageEmpty = viewer.querySelector('[data-site-plan-lot-image-empty]');
+		const progressPhotoSection = viewer.querySelector('[data-site-plan-progress-photo-section]');
+		const progressPhoto = viewer.querySelector('[data-site-plan-progress-photo]');
 		const lotAction = viewer.querySelector('[data-site-plan-lot-action]');
 		const lotProperty = viewer.querySelector('[data-site-plan-lot-property]');
 		const lotBlock = viewer.querySelector('[data-site-plan-lot-block]');
@@ -326,6 +455,12 @@ const initializeSitePlanViewers = () => {
 				}));
 				lotImages.hidden = imageUrls.length === 0;
 				lotImageEmpty.hidden = imageUrls.length > 0;
+			}
+
+			if (progressPhoto && progressPhotoSection) {
+				const progressPhotoUrl = lotButton.dataset.lotProgressImage ?? '';
+				progressPhoto.src = progressPhotoUrl;
+				progressPhotoSection.hidden = ! progressPhotoUrl;
 			}
 
 			if (lotAction) {
@@ -1194,6 +1329,7 @@ const initializeSitePlanEditors = () => {
 initializeCurrencyInputs();
 initializeLotImageInputs();
 initializeLotFilters();
+initializeConstructionPhotoCapture();
 initializeWorkflowBookingModals();
 initializeSitePlanViewers();
 initializeSitePlanPolygonEditors();
@@ -1203,6 +1339,7 @@ document.addEventListener('livewire:navigated', () => {
 	initializeCurrencyInputs();
 	initializeLotImageInputs();
 	initializeLotFilters();
+	initializeConstructionPhotoCapture();
 	initializeWorkflowBookingModals();
 	initializeSitePlanViewers();
 	initializeSitePlanPolygonEditors();

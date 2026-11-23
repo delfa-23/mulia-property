@@ -43,17 +43,26 @@
                                 <div class="overflow-x-auto">
                                     <table class="min-w-full divide-y divide-zinc-200 text-sm dark:divide-zinc-700">
                                         <thead class="text-left text-xs uppercase text-zinc-500">
-                                            <tr><th class="px-4 py-2.5">Kavling</th><th class="px-4 py-2.5">Harga Rumah</th><th class="px-4 py-2.5">Status</th></tr>
+                                            <tr><th class="px-4 py-2.5">Kavling</th><th class="px-4 py-2.5">Progress Foto</th><th class="px-4 py-2.5">Harga Rumah</th><th class="px-4 py-2.5">Status</th></tr>
                                         </thead>
                                         <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                                             @forelse($block->lots as $lot)
                                                 <tr>
                                                     <td class="px-4 py-3 font-medium text-zinc-900 dark:text-white">{{ $lot->lot_number }}</td>
+                                                    <td class="px-4 py-3">
+                                                        @if($lot->currentProgressReport)
+                                                            <a href="{{ $lot->currentProgressReport->photoUrl() }}" target="_blank" rel="noopener">
+                                                                <img src="{{ $lot->currentProgressReport->photoUrl() }}" alt="Foto progress kavling {{ $lot->lot_number }}" class="h-14 w-20 rounded-md object-cover">
+                                                            </a>
+                                                        @else
+                                                            <span class="text-xs text-zinc-500">Belum ada foto</span>
+                                                        @endif
+                                                    </td>
                                                     <td class="whitespace-nowrap px-4 py-3 text-zinc-700 dark:text-zinc-300">Rp {{ number_format((float) $lot->house_price, 0, ',', '.') }}</td>
                                                     <td class="px-4 py-3 text-zinc-700 dark:text-zinc-300">{{ ucfirst(str_replace('_', ' ', $lot->status)) }}</td>
                                                 </tr>
                                             @empty
-                                                <tr><td colspan="3" class="px-4 py-6 text-center text-zinc-500">Belum ada kavling pada blok ini.</td></tr>
+                                                <tr><td colspan="4" class="px-4 py-6 text-center text-zinc-500">Belum ada kavling pada blok ini.</td></tr>
                                             @endforelse
                                         </tbody>
                                     </table>

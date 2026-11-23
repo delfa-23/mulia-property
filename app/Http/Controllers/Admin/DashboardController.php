@@ -64,6 +64,7 @@ class DashboardController extends Controller
             ? Lot::query()
                 ->with([
                     'block',
+                    'currentProgressReport',
                     'bookings' => fn ($query) => $query
                         ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
                         ->with(['customer', 'sales'])
@@ -78,6 +79,7 @@ class DashboardController extends Controller
                 ->where('site_plan_path', $selectedProperty->site_plan_path)
                 ->with([
                     'lot.block',
+                    'lot.currentProgressReport',
                     'lot.bookings' => fn ($query) => $query
                         ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
                         ->with(['customer', 'sales'])

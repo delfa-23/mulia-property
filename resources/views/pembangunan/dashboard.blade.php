@@ -52,31 +52,35 @@
                 <span class="text-sm text-orange-50">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[640px] text-left">
+                <table class="w-full min-w-[800px] text-left">
                     <thead class="border-b border-orange-500 bg-orange-700/20 text-xs font-semibold uppercase tracking-wide text-orange-50">
                         <tr>
                             <th scope="col" class="px-5 py-3 sm:px-6">Jenis</th>
                             <th scope="col" class="px-5 py-3 text-right sm:px-6">RAB</th>
-                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Total Pengeluaran</th>
-                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Deviasi</th>
+                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Nilai Progress Fisik</th>
+                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Realisasi Pengeluaran Kas</th>
+                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Deviasi RAB - Kas</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white text-slate-900">
                         <tr>
                             <th scope="row" class="px-5 py-4 font-semibold text-slate-900 sm:px-6">Pembangunan</th>
                             <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionBudget, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionExpense, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionProgressValue, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionCashExpense, 0, ',', '.') }}</td>
                             <td class="whitespace-nowrap px-5 py-4 text-right font-semibold text-slate-900">Rp {{ number_format((float) $constructionDeviation, 0, ',', '.') }}</td>
                         </tr>
                         <tr>
                             <th scope="row" class="px-5 py-4 font-semibold text-slate-900 sm:px-6">Fasum</th>
                             <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $totalFacilityBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">-</td>
                             <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $facilityExpense, 0, ',', '.') }}</td>
                             <td class="whitespace-nowrap px-5 py-4 text-right font-semibold text-slate-900">Rp {{ number_format((float) $facilityDeviation, 0, ',', '.') }}</td>
                         </tr>
                         <tr class="bg-white font-bold">
                             <th scope="row" class="px-5 py-4 text-slate-900 sm:px-6">Total</th>
                             <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $totalBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $constructionProgressValue, 0, ',', '.') }}</td>
                             <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $totalExpense, 0, ',', '.') }}</td>
                             <td class="whitespace-nowrap px-5 py-4 text-right font-bold text-slate-900">Rp {{ number_format((float) $totalBudgetDeviation, 0, ',', '.') }}</td>
                         </tr>

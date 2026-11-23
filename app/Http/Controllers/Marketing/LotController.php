@@ -17,6 +17,7 @@ class LotController extends Controller
         $lots = Lot::query()
             ->with([
                 'block.property',
+                'currentProgressReport',
                 'bookings' => fn ($query) => $query
                     ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
                     ->when(

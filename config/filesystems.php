@@ -47,6 +47,15 @@ return [
             'report' => false,
         ],
 
+        'report-photos' => [
+            'driver' => 'local',
+            'root' => public_path(),
+            'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/'),
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => false,
+        ],
+
         'site-plans' => [
             'driver' => 'local',
             'root' => env('SITE_PLANS_PATH', public_path('images')),

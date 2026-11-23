@@ -173,6 +173,7 @@ class DashboardController extends Controller
             ? Lot::query()
                 ->with([
                     'block',
+                    'currentProgressReport',
                     'bookings' => $visibleBookingDetails,
                 ])
                 ->whereHas('block', fn ($query) => $query->where('property_id', $propertyId))
@@ -184,6 +185,7 @@ class DashboardController extends Controller
                 ->where('site_plan_path', $selectedProperty->site_plan_path)
                 ->with([
                     'lot.block',
+                    'lot.currentProgressReport',
                     'lot.bookings' => $visibleBookingDetails,
                 ])
                 ->orderBy('id')

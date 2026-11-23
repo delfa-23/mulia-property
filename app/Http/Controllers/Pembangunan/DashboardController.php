@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Pembangunan;
 
 use App\Http\Controllers\Controller;
 use App\Models\Block;
-use App\Models\Budget;
 use App\Models\CommonFacility;
 use App\Models\ConstructionProgress;
 use App\Models\ConstructionStage;
+use App\Models\ExpenseTransaction;
 use App\Models\Lot;
 use App\Models\Property;
 use Illuminate\Http\RedirectResponse;
@@ -64,6 +64,7 @@ class DashboardController extends Controller
             ? $selectedProperty->lots()
                 ->with([
                     'block',
+                    'currentProgressReport',
                     'bookings' => fn ($query) => $query
                         ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
                         ->with(['customer', 'sales'])
@@ -77,6 +78,7 @@ class DashboardController extends Controller
                 ->where('site_plan_path', $selectedProperty->site_plan_path)
                 ->with([
                     'lot.block',
+                    'lot.currentProgressReport',
                     'lot.bookings' => fn ($query) => $query
                         ->whereIn('status', ['booking', 'process', 'akad', 'finish'])
                         ->with(['customer', 'sales'])
@@ -99,6 +101,7 @@ class DashboardController extends Controller
                     ->select(['id', 'lot_id', 'stage_id', 'progress'])
                     ->whereNotNull('stage_id')
                     ->with('stage:id,property_id,max_progress,is_active'),
+                'budgets' => fn ($query) => $query->where('purpose', 'pembangunan'),
             ])
             ->get();
         $stages = ConstructionStage::query()
@@ -149,6 +152,10 @@ class DashboardController extends Controller
         $lotStatusCounts = $statusByLot->countBy();
         $physicalProgressByLot = $dashboardLots
             ->map(fn (Lot $lot): float => $lot->constructionProgressPercentage());
+        $constructionBudget = $dashboardLots
+            ->sum(fn (Lot $lot): float => (float) $lot->budgets->sum('amount'));
+        $constructionProgressValue = $dashboardLots
+            ->sum(fn (Lot $lot): float => $lot->constructionProgressValue());
 
         $stats = [
             'total_properties' => Property::query()->when($propertyId, fn ($query) => $query->whereKey($propertyId))->count(),
@@ -179,16 +186,14 @@ class DashboardController extends Controller
                         ->whereNull('lot_id')
                         ->whereNull('facility_id'));
             }));
-        $manualTotalExpense = (float) DB::table('construction_dashboard_settings')
-            ->where('id', 1)
-            ->value('manual_total_expense');
-        $constructionBudget = Budget::query()
-            ->where('purpose', 'pembangunan')
+        $constructionCashExpense = ExpenseTransaction::query()
+            ->where('division', 'pembangunan')
             ->whereNull('facility_id')
             ->tap($filterFinancialRecords)
             ->sum('amount');
-        $constructionExpense = $filterLots(Lot::query())
-            ->sum('construction_realization');
+        $manualTotalExpense = (float) DB::table('construction_dashboard_settings')
+            ->where('id', 1)
+            ->value('manual_total_expense');
         $facilityBudgets = CommonFacility::query()
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->withSum([
@@ -208,10 +213,10 @@ class DashboardController extends Controller
                 ? (float) $facility->realization
                 : (float) $facility->pembangunan_expense_total
         );
-        $constructionDeviation = (float) $constructionBudget - (float) $constructionExpense;
+        $constructionDeviation = (float) $constructionBudget - (float) $constructionCashExpense;
         $facilityDeviation = (float) $totalFacilityBudget - (float) $facilityExpense;
         $totalBudget = (float) $constructionBudget + (float) $totalFacilityBudget;
-        $totalExpense = (float) $constructionExpense + (float) $facilityExpense;
+        $totalExpense = (float) $constructionCashExpense + (float) $facilityExpense;
         $totalBudgetDeviation = $totalBudget - $totalExpense;
         $stageProgress = ConstructionProgress::query()
             ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
@@ -285,7 +290,8 @@ class DashboardController extends Controller
                 'lotStatusChart',
                 'lotStatusTotal',
                 'constructionBudget',
-                'constructionExpense',
+                'constructionProgressValue',
+                'constructionCashExpense',
                 'manualTotalExpense',
                 'constructionDeviation',
                 'totalBudget',

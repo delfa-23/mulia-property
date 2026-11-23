@@ -18,7 +18,11 @@ class PropertyOverviewController extends Controller
         $properties = Property::query()
             ->with([
                 'blocks' => fn ($query) => $query
-                    ->with(['lots' => fn ($query) => $query->orderBy('lot_number')])
+                    ->with([
+                        'lots' => fn ($query) => $query
+                            ->with('currentProgressReport')
+                            ->orderBy('lot_number'),
+                    ])
                     ->orderBy('name'),
             ])
             ->when(

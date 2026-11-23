@@ -387,6 +387,8 @@ Route::prefix('reports')
     ->group(function () {
         Route::get('/progress', [ProgressReportController::class, 'index'])->name('progress.index');
         Route::get('/progress/export.xlsx', [ProgressReportController::class, 'export'])->name('progress.export');
+        Route::get('/progress/archive', [ProgressReportController::class, 'archive'])->name('progress.archive');
+        Route::get('/progress/{progressReport}/photo', [ProgressReportController::class, 'photo'])->name('progress.photo');
         Route::get('/progress/create', [ProgressReportController::class, 'create'])->name('progress.create');
         Route::post('/progress', [ProgressReportController::class, 'store'])->name('progress.store');
         Route::get('/progress/{progressReport}/edit', [ProgressReportController::class, 'edit'])->name('progress.edit');

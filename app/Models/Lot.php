@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Storage;
 
 class Lot extends Model
@@ -94,6 +95,14 @@ class Lot extends Model
     public function constructionProgresses(): HasMany
     {
         return $this->hasMany(ConstructionProgress::class);
+    }
+
+    public function currentProgressReport(): HasOne
+    {
+        return $this->hasOne(ProgressReport::class)
+            ->where('status', 'approved')
+            ->whereNotNull('photo_path')
+            ->whereNull('photo_archived_at');
     }
 
     public function constructionProgressPercentage(): float

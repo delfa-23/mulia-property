@@ -94,6 +94,7 @@
                                     data-lot-price="{{ $lot?->house_price }}"
                                     data-lot-notes="{{ $lot?->notes }}"
                                     data-lot-images="{{ json_encode(array_column($lot?->imageGallery() ?? [], 'url')) }}"
+                                    data-lot-progress-image="{{ $lot?->currentProgressReport?->photoUrl() ?? '' }}"
                                     data-lot-property="{{ $property->name }}"
                                     data-lot-block="{{ $lot?->block->name }}"
                                     data-lot-number="{{ $lot?->lot_number }}"
@@ -143,6 +144,7 @@
                                     data-lot-price="{{ $lot->house_price }}"
                                     data-lot-notes="{{ $lot->notes }}"
                                     data-lot-images="{{ json_encode(array_column($lot->imageGallery(), 'url')) }}"
+                                    data-lot-progress-image="{{ $lot->currentProgressReport?->photoUrl() ?? '' }}"
                                     data-lot-property="{{ $property->name }}"
                                     data-lot-block="{{ $lot->block->name }}"
                                     data-lot-number="{{ $lot->lot_number }}"
@@ -214,6 +216,11 @@
                         <div data-site-plan-sales-row hidden><dt class="text-xs text-slate-500">Sales</dt><dd data-site-plan-lot-sales class="font-medium"></dd></div>
                     </dl>
                     <p data-site-plan-unmapped hidden class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Area ini belum dihubungkan dengan record kavling.</p>
+
+                    <div data-site-plan-progress-photo-section hidden class="mt-4">
+                        <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Foto Progress Terbaru</p>
+                        <img data-site-plan-progress-photo alt="Foto progress pembangunan kavling" class="max-h-72 w-full rounded-lg bg-slate-100 object-contain">
+                    </div>
 
                     <div class="mt-4 grid grid-cols-2 gap-3">
                         <div>
