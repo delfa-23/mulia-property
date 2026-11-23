@@ -240,16 +240,32 @@ const initializeConstructionPhotoCapture = () => {
 		startButton?.addEventListener('click', async () => {
 			errorMessage.hidden = true;
 
+			if (!window.isSecureContext) {
+				showError('Buka kamera hanya melalui HTTPS. Di Hostinger, aktifkan SSL dan akses aplikasi menggunakan alamat https://.');
+				return;
+			}
+
 			if (!navigator.mediaDevices?.getUserMedia) {
 				showError('Kamera tidak tersedia. Buka halaman melalui HTTPS dan gunakan perangkat dengan kamera.');
 				return;
 			}
 
 			try {
-				cameraStream = await navigator.mediaDevices.getUserMedia({
-					audio: false,
-					video: { facingMode: { ideal: 'environment' } },
-				});
+				try {
+					cameraStream = await navigator.mediaDevices.getUserMedia({
+						audio: false,
+						video: { facingMode: { ideal: 'environment' } },
+					});
+				} catch (environmentError) {
+					if (!['OverconstrainedError', 'NotFoundError', 'NotReadableError'].includes(environmentError?.name)) {
+						throw environmentError;
+					}
+
+					cameraStream = await navigator.mediaDevices.getUserMedia({
+						audio: false,
+						video: true,
+					});
+				}
 				video.srcObject = cameraStream;
 				await video.play();
 				video.hidden = false;
@@ -259,7 +275,14 @@ const initializeConstructionPhotoCapture = () => {
 			} catch (error) {
 				stopCamera();
 				console.error('Failed to access the construction report camera:', error);
-				showError('Kamera tidak dapat dibuka. Izinkan akses kamera di browser lalu coba lagi.');
+				const cameraErrors = {
+					NotAllowedError: 'Izin kamera ditolak. Aktifkan izin Kamera untuk situs ini di pengaturan browser.',
+					NotFoundError: 'Kamera tidak ditemukan pada perangkat ini.',
+					NotReadableError: 'Kamera sedang digunakan aplikasi lain atau tidak dapat dibuka.',
+					OverconstrainedError: 'Kamera belakang tidak tersedia. Gunakan kamera bawaan perangkat.',
+					SecurityError: 'Akses kamera diblokir browser. Pastikan situs menggunakan HTTPS dan ulangi.',
+				};
+				showError(cameraErrors[error?.name] ?? 'Kamera tidak dapat dibuka. Izinkan akses kamera di browser lalu coba lagi.');
 			}
 		});
 

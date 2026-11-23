@@ -41,7 +41,7 @@
     <div data-camera-photo-form data-photo-required="{{ $progressReport?->photo_path ? 'false' : 'true' }}" class="space-y-3 rounded-lg border border-zinc-200 p-4">
         <div>
             <p class="text-sm font-semibold">Foto langsung di lapangan</p>
-            <p class="mt-1 text-xs text-zinc-500">Gunakan kamera perangkat. Pilihan foto dari galeri atau file tidak tersedia.</p>
+            <p class="mt-1 text-xs text-zinc-500">Pilihan foto dari galeri atau file tidak tersedia.</p>
         </div>
 
         @if($progressReport?->photo_path)
