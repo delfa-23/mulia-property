@@ -207,6 +207,73 @@ class DashboardController extends Controller
             'weekly_reports' => WeeklyReport::query()->latest()->limit(5)->get(),
         ];
 
+        $constructionBudget = (float) (clone $budgetStats)
+            ->where('purpose', 'pembangunan')
+            ->whereNull('facility_id')
+            ->sum('amount');
+        $constructionExpense = (float) (clone $expenseStats)
+            ->where('division', 'pembangunan')
+            ->whereNull('facility_id')
+            ->sum('amount');
+        $constructionLots = (clone $lotStats)
+            ->with([
+                'constructionProgresses' => fn ($query) => $query
+                    ->whereNotNull('stage_id')
+                    ->with('stage:id,max_progress'),
+                'budgets' => fn ($query) => $query->where('purpose', 'pembangunan'),
+            ])
+            ->get();
+        $constructionProgressValue = $constructionLots
+            ->sum(fn (Lot $lot): float => $lot->constructionProgressValue());
+
+        $facilitySummary = CommonFacility::query()
+            ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
+            ->withSum([
+                'budgets as pembangunan_budget_total' => fn ($query) => $query->where('purpose', 'pembangunan'),
+            ], 'amount')
+            ->withSum([
+                'expenses as pembangunan_expense_total' => fn ($query) => $query->where('division', 'pembangunan'),
+            ], 'amount')
+            ->get();
+        $facilityBudget = $facilitySummary->sum(
+            fn (CommonFacility $facility): float => (float) $facility->pembangunan_budget_total > 0
+                ? (float) $facility->pembangunan_budget_total
+                : (float) $facility->budget
+        );
+        $facilityExpense = $facilitySummary->sum(
+            fn (CommonFacility $facility): float => (float) $facility->realization > 0
+                ? (float) $facility->realization
+                : (float) $facility->pembangunan_expense_total
+        );
+
+        $constructionFinanceSummary = [
+            'rows' => [
+                [
+                    'label' => 'Pembangunan Unit Rumah',
+                    'budget' => $constructionBudget,
+                    'expense' => $constructionExpense,
+                    'deviation' => $constructionBudget - $constructionExpense,
+                ],
+                [
+                    'label' => 'Fasilitas Umum',
+                    'budget' => $facilityBudget,
+                    'expense' => $facilityExpense,
+                    'deviation' => $facilityBudget - $facilityExpense,
+                ],
+            ],
+            'total' => [
+                'label' => 'Total',
+                'budget' => $constructionBudget + $facilityBudget,
+                'expense' => $constructionExpense + $facilityExpense,
+                'deviation' => ($constructionBudget + $facilityBudget) - ($constructionExpense + $facilityExpense),
+            ],
+            'progress' => [
+                'label' => 'Nilai Berdasarkan Progress',
+                'value' => $constructionProgressValue,
+                'deviation' => $constructionProgressValue - $constructionExpense,
+            ],
+        ];
+
         $lotStatusDefinitions = config('lot_statuses');
         $lotStatusTotal = $stats['total_lots'];
         $lotStatusChart = collect($lotStatusDefinitions)
@@ -258,21 +325,6 @@ class DashboardController extends Controller
             (float) $monthlyFinancialChart->max(fn (array $month): float => max($month['income'], $month['expense']))
         );
 
-        $stageProgress = ConstructionProgress::query()
-            ->when($propertyId, $filterLotRelations)
-            ->select('stage_id')
-            ->selectRaw('AVG(progress) as average_progress')
-            ->groupBy('stage_id')
-            ->with('stage:id,name')
-            ->get()
-            ->filter(fn (ConstructionProgress $progress): bool => $progress->stage !== null)
-            ->map(fn (ConstructionProgress $progress): array => [
-                'name' => $progress->stage->name,
-                'progress' => round((float) $progress->average_progress, 2),
-            ])
-            ->sortBy('name')
-            ->values();
-
         $recentBookings = $filterLotRelations(Booking::query())
             ->with(['customer', 'lot.block.property'])
             ->where('status', '!=', 'cancelled')
@@ -311,7 +363,7 @@ class DashboardController extends Controller
             'lotStatusGradient',
             'monthlyFinancialChart',
             'monthlyFinancialChartMax',
-            'stageProgress',
+            'constructionFinanceSummary',
             'recentBookings',
             'recentProgress',
             'recentAlerts',

@@ -255,32 +255,64 @@
             </section>
         </div>
 
-        <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex flex-wrap items-end justify-between gap-3">
+        <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <div class="flex flex-wrap items-center justify-between gap-3 bg-[#f54b00] px-6 py-5 text-white">
                 <div>
-                    <h2 class="text-lg font-bold text-[#10233D]">Progress Pembangunan per Tahapan</h2>
-                    <p class="mt-1 text-sm text-slate-500">Rata-rata progress tahapan pembangunan pada project terpilih.</p>
+                    <p class="text-sm font-bold uppercase tracking-[0.12em]">Keuangan Pembangunan</p>
+                    <h2 class="mt-1 text-xl font-bold">Ringkasan Anggaran</h2>
                 </div>
-                <span class="rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-[#EB5120]">{{ number_format($stats['physical_progress'], 2) }}% rata-rata fisik</span>
+                <span class="text-sm font-medium">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
             </div>
 
-            @if($stageProgress->isNotEmpty())
-                <div class="mt-5 grid gap-x-8 gap-y-4 md:grid-cols-2">
-                    @foreach($stageProgress as $stage)
-                        <div>
-                            <div class="mb-1.5 flex items-center justify-between gap-3 text-sm">
-                                <span class="truncate font-semibold text-slate-700">{{ $stage['name'] }}</span>
-                                <span class="shrink-0 font-bold text-[#10233D]">{{ number_format($stage['progress'], 2) }}%</span>
-                            </div>
-                            <div class="h-2 overflow-hidden rounded-full bg-slate-100">
-                                <div class="h-full rounded-full bg-[#EB5120]" style="width: {{ min(100, max(0, $stage['progress'])) }}%"></div>
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-            @else
-                <p class="mt-5 rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Belum ada data progress pembangunan untuk filter ini.</p>
-            @endif
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[720px] text-left text-sm">
+                    <thead class="bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        <tr>
+                            <th class="px-6 py-4 font-semibold">Item</th>
+                            <th class="px-6 py-4 text-right font-semibold">RAB</th>
+                            <th class="px-6 py-4 text-right font-semibold">Realisasi Pengeluaran</th>
+                            <th class="px-6 py-4 text-right font-semibold">Deviasi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 dark:divide-zinc-700">
+                        @foreach($constructionFinanceSummary['rows'] as $summary)
+                            <tr class="text-slate-900 dark:text-white">
+                                <th scope="row" class="whitespace-nowrap px-6 py-5 font-medium">{{ $summary['label'] }}</th>
+                                <td class="whitespace-nowrap px-6 py-5 text-right text-base">Rp {{ number_format($summary['budget'], 0, ',', '.') }}</td>
+                                <td class="whitespace-nowrap px-6 py-5 text-right text-base">Rp {{ number_format($summary['expense'], 0, ',', '.') }}</td>
+                                <td class="whitespace-nowrap px-6 py-5 text-right text-base">Rp {{ number_format($summary['deviation'], 0, ',', '.') }}</td>
+                            </tr>
+                        @endforeach
+                        @php($totalSummary = $constructionFinanceSummary['total'])
+                        <tr class="border-t border-slate-200 text-slate-900 dark:border-zinc-700 dark:text-white">
+                            <th scope="row" class="whitespace-nowrap px-6 py-5 font-bold">{{ $totalSummary['label'] }}</th>
+                            <td class="whitespace-nowrap px-6 py-5 text-right text-base font-bold">Rp {{ number_format($totalSummary['budget'], 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right text-base font-bold">Rp {{ number_format($totalSummary['expense'], 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right text-base font-bold">Rp {{ number_format($totalSummary['deviation'], 0, ',', '.') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            @php($progressSummary = $constructionFinanceSummary['progress'])
+            <div class="mt-8 overflow-x-auto border-t border-slate-200 pt-6 dark:border-zinc-700">
+                <table class="w-full min-w-[720px] text-left text-sm">
+                    <tbody>
+                        <tr class="text-slate-900 dark:text-white">
+                            <th scope="row" class="whitespace-nowrap px-6 py-3 font-medium">{{ $progressSummary['label'] }}</th>
+                            <td class="whitespace-nowrap px-6 py-3 text-right text-base">Rp {{ number_format($progressSummary['value'], 0, ',', '.') }}</td>
+                            <td class="px-6 py-3"></td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right text-base">Rp {{ number_format($progressSummary['deviation'], 0, ',', '.') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="space-y-1 px-6 pb-5 text-xs text-slate-500 dark:text-zinc-400">
+                <p class="font-semibold">Catatan:</p>
+                <p>1. Deviasi nilai berdasarkan progress adalah nilai berdasarkan progress dikurangi realisasi pengeluaran pembangunan unit rumah.</p>
+                <p>2. Realisasi pengeluaran pembangunan unit rumah diinput oleh admin.</p>
+            </div>
         </section>
 
         {{-- BOOKING & PROCESS --}}

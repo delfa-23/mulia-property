@@ -43,49 +43,62 @@
             </div>
         </form>
 
-        <section aria-labelledby="construction-finance-heading" class="overflow-hidden rounded-2xl border border-orange-600/30 bg-orange-600 text-white shadow-sm">
-            <div class="flex flex-wrap items-end justify-between gap-3 border-b border-white/15 bg-orange-600 px-5 py-4 sm:px-6">
+        <section aria-labelledby="construction-finance-heading" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <div class="flex flex-wrap items-end justify-between gap-3 bg-orange-600 px-6 py-4 text-white sm:px-7">
                 <div>
                     <p class="text-xs font-bold uppercase tracking-[0.16em] text-orange-100">Keuangan Pembangunan</p>
-                    <h2 id="construction-finance-heading" class="mt-1 text-lg font-bold !text-white opacity-100" style="color: #ffffff !important; opacity: 1; -webkit-text-fill-color: #ffffff;">Ringkasan Anggaran</h2>
+                    <h2 id="construction-finance-heading" class="mt-1 text-lg font-bold text-white">Ringkasan Anggaran</h2>
                 </div>
-                <span class="text-sm text-orange-50">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
+                <span class="text-sm text-white">{{ $selectedProperty?->name ?? 'Semua perumahan' }}</span>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[800px] text-left">
-                    <thead class="border-b border-orange-500 bg-orange-700/20 text-xs font-semibold uppercase tracking-wide text-orange-50">
+                <table class="w-full min-w-[720px] text-left">
+                    <thead class="border-b border-slate-200 bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                         <tr>
-                            <th scope="col" class="px-5 py-3 sm:px-6">Jenis</th>
-                            <th scope="col" class="px-5 py-3 text-right sm:px-6">RAB</th>
-                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Nilai Progress Fisik</th>
-                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Realisasi Pengeluaran Kas</th>
-                            <th scope="col" class="px-5 py-3 text-right sm:px-6">Deviasi RAB - Kas</th>
+                            <th scope="col" class="px-6 py-3.5">Item</th>
+                            <th scope="col" class="px-6 py-3.5 text-right">RAB</th>
+                            <th scope="col" class="px-6 py-3.5 text-right">Realisasi Pengeluaran</th>
+                            <th scope="col" class="px-6 py-3.5 text-right">Deviasi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-200 bg-white text-slate-900">
+                    <tbody class="divide-y divide-slate-200 bg-white text-slate-900 dark:divide-zinc-700 dark:bg-zinc-900 dark:text-white">
                         <tr>
-                            <th scope="row" class="px-5 py-4 font-semibold text-slate-900 sm:px-6">Pembangunan</th>
-                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionBudget, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionProgressValue, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $constructionCashExpense, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right font-semibold text-slate-900">Rp {{ number_format((float) $constructionDeviation, 0, ',', '.') }}</td>
+                            <th scope="row" class="px-6 py-5 font-semibold text-slate-900 dark:text-white">Pembangunan Unit Rumah</th>
+                            <td class="whitespace-nowrap px-6 py-5 text-right">Rp {{ number_format((float) $constructionBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right">Rp {{ number_format((float) $constructionSummaryExpense, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right font-semibold text-slate-900 dark:text-white">Rp {{ number_format((float) $constructionDeviation, 0, ',', '.') }}</td>
                         </tr>
                         <tr>
-                            <th scope="row" class="px-5 py-4 font-semibold text-slate-900 sm:px-6">Fasum</th>
-                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $totalFacilityBudget, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">-</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right sm:px-6">Rp {{ number_format((float) $facilityExpense, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right font-semibold text-slate-900">Rp {{ number_format((float) $facilityDeviation, 0, ',', '.') }}</td>
+                            <th scope="row" class="px-6 py-5 font-semibold text-slate-900 dark:text-white">Fasilitas Umum</th>
+                            <td class="whitespace-nowrap px-6 py-5 text-right">Rp {{ number_format((float) $totalFacilityBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right">Rp {{ number_format((float) $facilityExpense, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right font-semibold text-slate-900 dark:text-white">Rp {{ number_format((float) $facilityDeviation, 0, ',', '.') }}</td>
                         </tr>
-                        <tr class="bg-white font-bold">
-                            <th scope="row" class="px-5 py-4 text-slate-900 sm:px-6">Total</th>
-                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $totalBudget, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $constructionProgressValue, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold sm:px-6">Rp {{ number_format((float) $totalExpense, 0, ',', '.') }}</td>
-                            <td class="whitespace-nowrap px-5 py-4 text-right font-bold text-slate-900">Rp {{ number_format((float) $totalBudgetDeviation, 0, ',', '.') }}</td>
+                        <tr class="bg-white font-bold dark:bg-zinc-900">
+                            <th scope="row" class="px-6 py-5 text-slate-900 dark:text-white">Total</th>
+                            <td class="whitespace-nowrap px-6 py-5 text-right">Rp {{ number_format((float) $totalBudget, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right">Rp {{ number_format((float) $totalExpense, 0, ',', '.') }}</td>
+                            <td class="whitespace-nowrap px-6 py-5 text-right text-slate-900 dark:text-white">Rp {{ number_format((float) $totalBudgetDeviation, 0, ',', '.') }}</td>
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="mt-8 overflow-x-auto border-t border-slate-200 pt-6 dark:border-zinc-700">
+                <table class="w-full min-w-[720px] text-left">
+                    <tbody>
+                        <tr class="text-slate-900 dark:text-white">
+                            <th scope="row" class="px-6 py-3 font-semibold">Nilai Berdasarkan Progress</th>
+                            <td class="whitespace-nowrap px-6 py-3 text-right">Rp {{ number_format((float) $constructionProgressValue, 0, ',', '.') }}</td>
+                            <td class="px-6 py-3"></td>
+                            <td class="whitespace-nowrap px-6 py-3 text-right">Rp {{ number_format((float) $constructionProgressDeviation, 0, ',', '.') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="space-y-1 px-6 pb-5 text-xs text-slate-500 dark:text-zinc-400">
+                <p class="font-semibold">Ctt:</p>
+                <p>1. Deviasi nilai berdasarkan progress adalah nilai berdasarkan progress dikurangi realisasi pengeluaran.</p>
+                <p>2. Realisasi pengeluaran pembangunan unit rumah diinput oleh admin.</p>
             </div>
         </section>
 

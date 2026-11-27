@@ -194,6 +194,7 @@ class DashboardController extends Controller
         $manualTotalExpense = (float) DB::table('construction_dashboard_settings')
             ->where('id', 1)
             ->value('manual_total_expense');
+        $constructionSummaryExpense = $manualTotalExpense;
         $facilityBudgets = CommonFacility::query()
             ->when($propertyId, fn ($query) => $query->where('property_id', $propertyId))
             ->withSum([
@@ -213,10 +214,11 @@ class DashboardController extends Controller
                 ? (float) $facility->realization
                 : (float) $facility->pembangunan_expense_total
         );
-        $constructionDeviation = (float) $constructionBudget - (float) $constructionCashExpense;
+        $constructionDeviation = (float) $constructionBudget - $constructionSummaryExpense;
+        $constructionProgressDeviation = (float) $constructionProgressValue - $constructionSummaryExpense;
         $facilityDeviation = (float) $totalFacilityBudget - (float) $facilityExpense;
         $totalBudget = (float) $constructionBudget + (float) $totalFacilityBudget;
-        $totalExpense = (float) $constructionCashExpense + (float) $facilityExpense;
+        $totalExpense = $constructionSummaryExpense + (float) $facilityExpense;
         $totalBudgetDeviation = $totalBudget - $totalExpense;
         $stageProgress = ConstructionProgress::query()
             ->when($propertyId || $blockId || $lotId, fn ($query) => $query->whereHas('lot', $filterLots))
@@ -292,6 +294,8 @@ class DashboardController extends Controller
                 'constructionBudget',
                 'constructionProgressValue',
                 'constructionCashExpense',
+                'constructionSummaryExpense',
+                'constructionProgressDeviation',
                 'manualTotalExpense',
                 'constructionDeviation',
                 'totalBudget',

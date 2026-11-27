@@ -237,16 +237,46 @@ const initializeConstructionPhotoCapture = () => {
 			errorMessage.hidden = false;
 		};
 
+		const openNativeCamera = () => {
+			if (!photoInput) {
+				showError('Input kamera tidak tersedia.');
+				return;
+			}
+
+			photoInput.setAttribute('capture', 'environment');
+			photoInput.click();
+		};
+
+		photoInput?.addEventListener('change', () => {
+			const file = photoInput.files?.[0];
+			if (!file) {
+				return;
+			}
+
+			if (previewUrl) {
+				URL.revokeObjectURL(previewUrl);
+			}
+			previewUrl = URL.createObjectURL(file);
+			capturedImage.src = previewUrl;
+			capturedImage.hidden = false;
+			video.hidden = true;
+			startButton.hidden = true;
+			captureButton.hidden = true;
+			retakeButton.hidden = false;
+			requiredMessage.hidden = true;
+			stopCamera();
+		});
+
 		startButton?.addEventListener('click', async () => {
 			errorMessage.hidden = true;
 
 			if (!window.isSecureContext) {
-				showError('Buka kamera hanya melalui HTTPS. Di Hostinger, aktifkan SSL dan akses aplikasi menggunakan alamat https://.');
+				openNativeCamera();
 				return;
 			}
 
 			if (!navigator.mediaDevices?.getUserMedia) {
-				showError('Kamera tidak tersedia. Buka halaman melalui HTTPS dan gunakan perangkat dengan kamera.');
+				openNativeCamera();
 				return;
 			}
 
